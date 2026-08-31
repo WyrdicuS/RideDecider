@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.75"
+        android:scaleY="0.75"
+        android:translateX="13.5"
+        android:translateY="13.5">
+        <!-- Speedometer Outer Arc Track -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:pathData="M 24,66 A 36,36 0 1,1 84,66" />
+
+        <!-- Road in perspective -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 44,68 L 64,68 L 76,96 L 32,96 Z" />
+        
+        <!-- Road center dashed mark -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#000000"
+            android:strokeWidth="2"
+            android:pathData="M 54,72 L 54,78 M 54,84 L 54,92" />
+
+        <!-- Speedometer Needle -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 54,50 L 78,32 L 56,54 Z" />
+
+        <!-- Speedometer Needle Pivot -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 54,54 m -7,0 a 7,7 0 1,0 14,0 a 7,7 0 1,0 -14,0" />
+    </group>
+</vector>

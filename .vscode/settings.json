@@ -1,0 +1,10 @@
+{
+    "CodeGPT.provider": "Ollama",
+    "CodeGPT.model": "qwen2.5-coder:7b",
+    "CodeGPT.ollamaUrl": "http://127.0.0.1:11434",
+    "CodeGPT.apiKey": "Ollama",
+    "codegpt.provider": "Ollama",
+    "codegpt.model": "qwen2.5-coder:7b",
+    "codegpt.ollamaUrl": "http://127.0.0.1:11434",
+    "java.configuration.updateBuildConfiguration": "interactive"
+}

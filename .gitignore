@@ -7,12 +7,17 @@
 build/
 **/build/
 
-# Local configuration
+# Local configuration & Secrets
 local.properties
+secrets.properties
+*.jks
+*.keystore
 
-# Android build
+# Android build & artifacts
 .externalNativeBuild/
 .cxx/
+*.apk
+*.aab
 
 # Captures
 captures/
@@ -20,3 +25,9 @@ captures/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Scratch and dumps
+*.txt
+scratch/
+*.py
+*.js

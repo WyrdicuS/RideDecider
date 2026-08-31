@@ -1,0 +1,15 @@
+{
+  "versionCode": 2,
+  "versionName": "1.0.1",
+  "minSupportedVersionCode": 1,
+  "mandatory": false,
+  "apkUrl": "https://github.com/WyrdicuS/RideDecider/releases/download/v1.0.1/RideDecider-1.0.1.apk",
+  "apkSha256": "36def20e45d9e3856ee38f47e34d00ffb72f16639111a49b163e48169f610dd3",
+  "apkSizeBytes": 16024331,
+  "releaseDate": "2026-09-01T00:00:00Z",
+  "releaseNotes": [
+    "Mejoras de rendimiento y estabilidad",
+    "Correcciones menores de visualización",
+    "Validación del sistema de actualización privada OTA"
+  ]
+}

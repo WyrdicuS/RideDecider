@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">RideDecider</string>
+    <string name="accessibility_service_description">Analiza las ofertas de viaje de Uber Driver para calcular su rentabilidad en tiempo real.</string>
+
+    <!-- Prominent Disclosure Strings -->
+    <string name="accessibility_disclosure_title">Acceso a información de Uber Driver</string>
+    <string name="accessibility_disclosure_intro">RideDecider utiliza el servicio de accesibilidad de Android para detectar información visible de las ofertas de viaje mientras utilizas Uber Driver.</string>
+    <string name="accessibility_disclosure_section_data_title">¿Qué información se utiliza?</string>
+    <string name="accessibility_disclosure_data_item_1">Tarifas de la oferta, distancias y tiempos estimados.</string>
+    <string name="accessibility_disclosure_data_item_2">Direcciones de recogida y destino, categoría de Uber y valoración del pasajero.</string>
+    <string name="accessibility_disclosure_section_purpose_title">Finalidad</string>
+    <string name="accessibility_disclosure_purpose_body">Estos datos se procesan en el dispositivo para calcular métricas de rentabilidad, como €/km y €/h, y mostrarte una recomendación mediante RideDecider.</string>
+    <string name="accessibility_disclosure_section_privacy_title">Privacidad y control del usuario</string>
+    <string name="accessibility_disclosure_privacy_item_1">Los datos se procesan localmente en tu dispositivo. RideDecider no los envía a servidores externos ni los comparte con terceros.</string>
+    <string name="accessibility_disclosure_privacy_item_2">RideDecider no acepta ni rechaza viajes automáticamente. La aplicación únicamente analiza la información y muestra una recomendación.</string>
+    <string name="accessibility_disclosure_action_continue">Entendido y continuar</string>
+    <string name="accessibility_disclosure_action_cancel">Ahora no</string>
 </resources>
