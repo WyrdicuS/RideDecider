@@ -67,13 +67,15 @@ import com.ridedecider.app.ui.theme.RdStatusBehind
 import com.ridedecider.app.ui.theme.RdSurface
 import com.ridedecider.app.ui.theme.RdSurfaceElevated
 import com.ridedecider.app.ui.theme.RdTextPrimary
+import com.ridedecider.app.data.accessibility.AccessibilityServiceStatus
 import com.ridedecider.app.ui.theme.RdTextSecondary
 import com.ridedecider.app.ui.theme.RdTextTertiary
 import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
-    isAccessibilityEnabled: Boolean,
+    accessibilityStatus: AccessibilityServiceStatus = AccessibilityServiceStatus.DISABLED,
+    isAccessibilityEnabled: Boolean = accessibilityStatus.isOperative,
     hasOverlayPermission: Boolean,
     onOpenAccessibilitySettings: () -> Unit,
     onOpenOverlaySettings: () -> Unit,
@@ -141,9 +143,18 @@ fun SettingsScreen(
                         Text(text = "Servicio de Accesibilidad", color = RdTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Text(text = "Lectura no invasiva de Uber Driver", color = RdTextTertiary, fontSize = 11.sp)
                     }
+
+                    val (statusLabel, isStatusActive, isStatusWarning) = when (accessibilityStatus) {
+                        AccessibilityServiceStatus.CONNECTED -> Triple("ACTIVO", true, false)
+                        AccessibilityServiceStatus.INTERRUPTED -> Triple("PAUSADO", true, true)
+                        AccessibilityServiceStatus.ENABLED_DISCONNECTED -> Triple("PENDIENTE", false, true)
+                        AccessibilityServiceStatus.DISABLED -> Triple(if (isAccessibilityEnabled) "ACTIVO" else "INACTIVO", isAccessibilityEnabled, false)
+                    }
+
                     StatusIndicator(
-                        label = if (isAccessibilityEnabled) "ACTIVO" else "INACTIVO",
-                        isActive = isAccessibilityEnabled
+                        label = statusLabel,
+                        isActive = isStatusActive,
+                        isWarning = isStatusWarning
                     )
                 }
 

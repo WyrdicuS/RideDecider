@@ -1,5 +1,6 @@
 package com.ridedecider.app.domain.repository
 
+import com.ridedecider.app.data.local.room.entity.DecisionSnapshotEntity
 import com.ridedecider.app.domain.model.RecordedTrip
 import com.ridedecider.app.domain.model.TripTrackingStatus
 
@@ -11,6 +12,26 @@ interface EarningsRepository {
      * Registra un viaje en el historial.
      */
     suspend fun recordTrip(trip: RecordedTrip)
+
+    /**
+     * Guarda una fotografía histórica inmutable de decisión (Learning Data Foundation).
+     */
+    suspend fun saveDecisionSnapshot(snapshot: DecisionSnapshotEntity)
+
+    /**
+     * Actualiza los resultados reales confirmados en el snapshot de decisión correspondiente a un tripId.
+     */
+    suspend fun updateSnapshotActuals(
+        tripId: String,
+        actualDist: Double? = null,
+        actualDur: Double? = null,
+        actualPickupDur: Double? = null,
+        actualBaseFare: Double? = null,
+        waitingComp: Double? = null,
+        cancellationFee: Double? = null,
+        tip: Double? = null,
+        finalEarnings: Double? = null
+    )
 
     /**
      * Actualiza el estado de un viaje existente (ej. EVALUATED -> ACCEPTED_BY_DRIVER -> COMPLETED o CANCELLED).

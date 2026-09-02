@@ -2,10 +2,14 @@ package com.ridedecider.app.data.accessibility.uber
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.graphics.Bitmap
+import android.os.Build
 import android.util.Log
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.ridedecider.app.data.accessibility.uber.diagnostic.LogcatAccessibilityDiagnosticLogger
+import com.ridedecider.app.data.di.ServiceLocator
 import com.ridedecider.app.domain.model.TripEvaluation
 import com.ridedecider.app.ui.overlay.HudOverlayManager
 import com.ridedecider.app.ui.overlay.state.HudStateHolder
@@ -54,11 +58,14 @@ class UberAccessibilityService : AccessibilityService() {
     }
 
     private val snapshotConverter = UberNodeSnapshotConverter()
-    private val diagnosticLogger = LogcatAccessibilityDiagnosticLogger(
-        isLoggingEnabled = LOGGING_ENABLED,
-        isTreeDebugEnabled = TREE_DEBUG_ENABLED,
-        tag = TAG
-    )
+    private val diagnosticLogger by lazy {
+        LogcatAccessibilityDiagnosticLogger(
+            isLoggingEnabled = LOGGING_ENABLED,
+            isTreeDebugEnabled = TREE_DEBUG_ENABLED,
+            tag = TAG,
+            context = this
+        )
+    }
     private lateinit var processor: UberAccessibilityProcessor
     private var isProcessorInitialized: Boolean = false
 
@@ -130,6 +137,8 @@ class UberAccessibilityService : AccessibilityService() {
 
         Log.i(TAG, "[SERVICE_CONNECTED] RideDecider Accessibility Service conectado con flags reforzados.")
         syncDiagnosticFlags()
+
+        ServiceLocator.getAccessibilityServiceStateTracker(this).onConnected()
 
         hudOverlayManager = HudOverlayManager(this).also { it.start() }
 
@@ -347,7 +356,10 @@ class UberAccessibilityService : AccessibilityService() {
 
             // 5. Procesar el snapshot a través del pipeline
             try {
-                processor.processSnapshot(snapshot, packageName ?: UberAccessibilityConstants.UBER_PACKAGE_NAME, currentTime = now)
+                val result = processor.processSnapshot(snapshot, packageName ?: UberAccessibilityConstants.UBER_PACKAGE_NAME, currentTime = now)
+                if (result is UberAccessibilityProcessor.ProcessResult.RequiresOcrFallback) {
+                    executeOcrFallback()
+                }
             } catch (e: Exception) {
                 diagnosticLogger.logEvent("PROCESSOR_ERROR", "Error no controlado en el pipeline: ${e.message}")
             }
@@ -432,8 +444,62 @@ class UberAccessibilityService : AccessibilityService() {
         diagnosticLogger.isTreeDebugEnabled = TREE_DEBUG_ENABLED
     }
 
+    private fun executeOcrFallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+
+        val startCapTime = System.currentTimeMillis()
+        try {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshotResult: ScreenshotResult) {
+                        val capLatency = System.currentTimeMillis() - startCapTime
+                        val hardwareBuffer = screenshotResult.hardwareBuffer
+                        val colorSpace = screenshotResult.colorSpace
+                        val bitmap = try {
+                            Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
+                                ?.copy(Bitmap.Config.ARGB_8888, false)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error convirtiendo hardware buffer a Bitmap: ${e.message}")
+                            null
+                        } finally {
+                            try { hardwareBuffer.close() } catch (_: Exception) {}
+                        }
+
+                        if (bitmap == null) return
+
+                        serviceScope.launch {
+                            try {
+                                val ocrEngine = ServiceLocator.getUberOfferOcrFallback()
+                                val ocrResult = ocrEngine.processImage(
+                                    bitmap = bitmap,
+                                    screenshotLatencyMs = capLatency
+                                )
+                                processor.processOcrResult(ocrResult)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error procesando OCR fallback: ${e.message}")
+                            } finally {
+                                try {
+                                    if (!bitmap.isRecycled) bitmap.recycle()
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        Log.w(TAG, "Fallo en takeScreenshot() de accesibilidad: errorCode=$errorCode")
+                    }
+                }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Excepción al solicitar takeScreenshot(): ${e.message}")
+        }
+    }
+
     override fun onInterrupt() {
         Log.w(TAG, "[SERVICE_INTERRUPTED] Servicio de accesibilidad interrumpido.")
+        ServiceLocator.getAccessibilityServiceStateTracker(this).onInterrupted()
         if (isProcessorInitialized) {
             processor.reset()
         }
@@ -443,6 +509,7 @@ class UberAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG, "[SERVICE_DESTROYED] Servicio de accesibilidad destruido.")
+        ServiceLocator.getAccessibilityServiceStateTracker(this).onDestroyed(this)
         try {
             unregisterReceiver(testReceiver)
         } catch (_: Exception) {}

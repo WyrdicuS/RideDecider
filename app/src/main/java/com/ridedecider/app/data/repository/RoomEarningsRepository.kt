@@ -1,6 +1,8 @@
 package com.ridedecider.app.data.repository
 
+import com.ridedecider.app.data.local.room.dao.DecisionSnapshotDao
 import com.ridedecider.app.data.local.room.dao.RecordedTripDao
+import com.ridedecider.app.data.local.room.entity.DecisionSnapshotEntity
 import com.ridedecider.app.data.local.room.entity.RecordedTripEntity
 import com.ridedecider.app.domain.model.RecordedTrip
 import com.ridedecider.app.domain.model.TripTrackingStatus
@@ -15,8 +17,39 @@ import kotlinx.coroutines.withContext
  */
 class RoomEarningsRepository(
     private val recordedTripDao: RecordedTripDao,
+    private val decisionSnapshotDao: DecisionSnapshotDao? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : EarningsRepository {
+
+    override suspend fun saveDecisionSnapshot(snapshot: DecisionSnapshotEntity) = withContext(ioDispatcher) {
+        decisionSnapshotDao?.insertSnapshot(snapshot)
+        Unit
+    }
+
+    override suspend fun updateSnapshotActuals(
+        tripId: String,
+        actualDist: Double?,
+        actualDur: Double?,
+        actualPickupDur: Double?,
+        actualBaseFare: Double?,
+        waitingComp: Double?,
+        cancellationFee: Double?,
+        tip: Double?,
+        finalEarnings: Double?
+    ) = withContext(ioDispatcher) {
+        decisionSnapshotDao?.updateSnapshotActuals(
+            tripId = tripId,
+            actualDist = actualDist,
+            actualDur = actualDur,
+            actualPickupDur = actualPickupDur,
+            actualBaseFare = actualBaseFare,
+            waitingComp = waitingComp,
+            cancellationFee = cancellationFee,
+            tip = tip,
+            finalEarnings = finalEarnings
+        )
+        Unit
+    }
 
     override suspend fun recordTrip(trip: RecordedTrip) = withContext(ioDispatcher) {
         val existing = recordedTripDao.getTripById(trip.id)
@@ -24,6 +57,10 @@ class RoomEarningsRepository(
             val entity = RecordedTripEntity.fromDomain(trip)
             recordedTripDao.insertOrUpdate(entity)
         } else {
+            // Protección estricta: NUNCA degradar un estado terminal COMPLETED o CANCELLED
+            if (existing.status == "COMPLETED" || existing.status.startsWith("CANCELLED")) {
+                return@withContext
+            }
             // Preservar datos de finalización previos si ya existían
             val updated = existing.copy(
                 status = trip.status.name,

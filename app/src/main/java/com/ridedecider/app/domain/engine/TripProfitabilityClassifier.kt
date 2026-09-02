@@ -105,4 +105,54 @@ class TripProfitabilityClassifier {
         // Criterio 4: ACEPTABLE (aprobado por margen ajustado)
         return TripProfitabilityLevel.ACCEPTABLE
     }
+
+    /**
+     * Calcula una puntuación cuantitativa transparente (0 a 100) utilizando
+     * 5 componentes normalizados ponderados por los pesos centralizados en [ProfitabilityConfig].
+     */
+    fun calculateScore(
+        metrics: EvaluationMetrics,
+        config: ProfitabilityConfig,
+        pickupDistanceKm: Double
+    ): Int {
+        val minGrossH = if (config.minGrossHourlyRate > 0.0) config.minGrossHourlyRate else 24.0
+        val minGrossKm = if (config.minGrossPerKmRate > 0.0) config.minGrossPerKmRate else 1.1
+        val minNetTrip = if (config.minNetTripProfit > 0.0) config.minNetTripProfit else 2.0
+        val maxPickupKm = if (config.maxPickupDistanceKm > 0.0) config.maxPickupDistanceKm else 4.5
+
+        // 1. Componente Horario (Hourly Efficiency) [0.0 - 100.0]
+        val hourlyRatio = metrics.grossPerHour / minGrossH
+        val hourlyComponent = (hourlyRatio * 75.0).coerceIn(0.0, 100.0)
+
+        // 2. Componente de Distancia (Distance Efficiency) [0.0 - 100.0]
+        val kmRatio = metrics.effectiveGrossPerKm / minGrossKm
+        val distanceComponent = (kmRatio * 75.0).coerceIn(0.0, 100.0)
+
+        // 3. Componente de Beneficio Neto (Net Profitability) [0.0 - 100.0]
+        val netRatio = metrics.netProfit / minNetTrip
+        val netProfitComponent = (netRatio * 50.0).coerceIn(0.0, 100.0)
+
+        // 4. Componente de Recogida (Pickup Distance Efficiency) [0.0 - 100.0]
+        val pickupRatio = if (maxPickupKm > 0.0) (pickupDistanceKm / maxPickupKm) else 0.0
+        val pickupComponent = ((1.0 - pickupRatio) * 100.0).coerceIn(0.0, 100.0)
+
+        // 5. Componente de Utilización de Tiempo y Velocidad (Time Utilization & Traffic Speed) [0.0 - 100.0]
+        val timeRatioFactor = (1.0 - metrics.pickupTimeRatio) * 70.0
+        val speedFactor = if (metrics.pickupSpeedKmh != null) {
+            val speedRatio = metrics.pickupSpeedKmh / config.minPickupSpeedKmh
+            (speedRatio * 30.0).coerceIn(0.0, 30.0)
+        } else {
+            30.0 // Si no hay distancia de recogida, no hay penalización por velocidad
+        }
+        val timeUtilizationComponent = (timeRatioFactor + speedFactor).coerceIn(0.0, 100.0)
+
+        // Ponderación final con pesos centralizados
+        val rawScore = (hourlyComponent * config.hourlyWeight) +
+                (distanceComponent * config.distanceWeight) +
+                (netProfitComponent * config.netProfitWeight) +
+                (pickupComponent * config.pickupWeight) +
+                (timeUtilizationComponent * config.timeUtilizationWeight)
+
+        return Math.round(rawScore).toInt().coerceIn(0, 100)
+    }
 }

@@ -58,6 +58,9 @@ import com.ridedecider.app.ui.components.StatusIndicator
 import com.ridedecider.app.ui.overlay.model.HudUiModel
 import com.ridedecider.app.ui.theme.RdBgCanvas
 import com.ridedecider.app.ui.theme.RdBorderSubtle
+import com.ridedecider.app.ui.theme.RdStatusAhead
+import com.ridedecider.app.ui.theme.RdStatusWarning
+import com.ridedecider.app.ui.theme.RdTextTertiary
 import com.ridedecider.app.ui.theme.RdBrandPrimary
 import com.ridedecider.app.ui.theme.RdStatusAhead
 import com.ridedecider.app.ui.theme.RdStatusBehind
@@ -72,6 +75,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import com.ridedecider.app.data.accessibility.AccessibilityServiceStatus
+
 enum class HistoryPeriod(val label: String) {
     TODAY("Hoy"),
     LAST_7_DAYS("7 Días"),
@@ -80,7 +85,8 @@ enum class HistoryPeriod(val label: String) {
 
 @Composable
 fun HomeScreen(
-    isAccessibilityEnabled: Boolean,
+    accessibilityStatus: AccessibilityServiceStatus = AccessibilityServiceStatus.DISABLED,
+    isAccessibilityEnabled: Boolean = accessibilityStatus.isOperative,
     earningsTracker: EarningsTracker,
     modifier: Modifier = Modifier
 ) {
@@ -165,10 +171,7 @@ fun HomeScreen(
                 Image(
                     painter = painterResource(id = R.drawable.ic_ridedecider_logo),
                     contentDescription = "RideDecider Logo",
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .border(1.dp, RdBorderSubtle, RoundedCornerShape(10.dp))
+                    modifier = Modifier.size(40.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
@@ -179,18 +182,46 @@ fun HomeScreen(
                         fontWeight = FontWeight.Black,
                         letterSpacing = (-0.3).sp
                     )
+                    val statusText: String
+                    val statusColor: Color
+                    when (accessibilityStatus) {
+                        AccessibilityServiceStatus.CONNECTED -> {
+                            statusText = "Uber conectado"
+                            statusColor = RdStatusAhead
+                        }
+                        AccessibilityServiceStatus.INTERRUPTED -> {
+                            statusText = "Servicio pausado"
+                            statusColor = RdStatusWarning
+                        }
+                        AccessibilityServiceStatus.ENABLED_DISCONNECTED -> {
+                            statusText = "Esperando vinculación"
+                            statusColor = RdStatusWarning
+                        }
+                        AccessibilityServiceStatus.DISABLED -> {
+                            statusText = if (isAccessibilityEnabled) "Uber conectado" else "Servicio inactivo"
+                            statusColor = if (isAccessibilityEnabled) RdStatusAhead else RdTextTertiary
+                        }
+                    }
                     Text(
-                        text = if (isAccessibilityEnabled) "Uber conectado" else "Servicio inactivo",
-                        color = if (isAccessibilityEnabled) RdStatusAhead else RdTextTertiary,
+                        text = statusText,
+                        color = statusColor,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             }
 
+            val (statusLabel, isStatusActive, isStatusWarning) = when (accessibilityStatus) {
+                AccessibilityServiceStatus.CONNECTED -> Triple("ACTIVO", true, false)
+                AccessibilityServiceStatus.INTERRUPTED -> Triple("PAUSADO", true, true)
+                AccessibilityServiceStatus.ENABLED_DISCONNECTED -> Triple("PENDIENTE", false, true)
+                AccessibilityServiceStatus.DISABLED -> Triple(if (isAccessibilityEnabled) "ACTIVO" else "INACTIVO", isAccessibilityEnabled, false)
+            }
+
             StatusIndicator(
-                label = if (isAccessibilityEnabled) "ACTIVO" else "INACTIVO",
-                isActive = isAccessibilityEnabled
+                label = statusLabel,
+                isActive = isStatusActive,
+                isWarning = isStatusWarning
             )
         }
 

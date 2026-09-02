@@ -46,7 +46,7 @@ class RawUberTripOfferMapper {
         }
 
         val category = parseCategory(rawOffer.category)
-        val id = generateDeterministicId(rawOffer, offerType)
+        val id = rawOffer.instanceId
 
         val trip = Trip(
             id = id,

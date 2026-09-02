@@ -1,6 +1,5 @@
 package com.ridedecider.app
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -47,7 +46,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.unit.sp
+import com.ridedecider.app.data.accessibility.AccessibilityServiceStatus
 import com.ridedecider.app.data.di.ServiceLocator
 import com.ridedecider.app.ui.components.AppBottomNavigation
 import com.ridedecider.app.ui.components.AppTab
@@ -62,7 +63,6 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private var hasOverlayPermission by mutableStateOf(false)
-    private var isAccessibilityEnabled by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +73,8 @@ class MainActivity : ComponentActivity() {
             RideDeciderTheme {
                 val context = LocalContext.current
                 val earningsTracker = remember { ServiceLocator.getEarningsTracker(context) }
+                val serviceTracker = remember { ServiceLocator.getAccessibilityServiceStateTracker(context) }
+                val accessibilityStatus by serviceTracker.status.collectAsState()
                 var currentTab by remember { mutableStateOf(AppTab.HOME) }
 
                 Scaffold(
@@ -93,13 +95,13 @@ class MainActivity : ComponentActivity() {
                         when (currentTab) {
                             AppTab.HOME -> {
                                 HomeScreen(
-                                    isAccessibilityEnabled = isAccessibilityEnabled,
+                                    accessibilityStatus = accessibilityStatus,
                                     earningsTracker = earningsTracker
                                 )
                             }
                             AppTab.LIVE -> {
                                 LiveScreen(
-                                    isAccessibilityEnabled = isAccessibilityEnabled,
+                                    accessibilityStatus = accessibilityStatus,
                                     hasOverlayPermission = hasOverlayPermission,
                                     earningsTracker = earningsTracker
                                 )
@@ -111,7 +113,7 @@ class MainActivity : ComponentActivity() {
                             }
                             AppTab.SETTINGS -> {
                                 SettingsScreen(
-                                    isAccessibilityEnabled = isAccessibilityEnabled,
+                                    accessibilityStatus = accessibilityStatus,
                                     hasOverlayPermission = hasOverlayPermission,
                                     onOpenAccessibilitySettings = { openAccessibilitySettings() },
                                     onOpenOverlaySettings = { requestOverlayPermission() }
@@ -131,7 +133,7 @@ class MainActivity : ComponentActivity() {
 
     private fun updatePermissionsStatus() {
         hasOverlayPermission = Settings.canDrawOverlays(this)
-        isAccessibilityEnabled = isAccessibilityServiceEnabled(this)
+        ServiceLocator.getAccessibilityServiceStateTracker(this).reconcile(this)
     }
 
     private fun requestOverlayPermission() {
@@ -145,16 +147,6 @@ class MainActivity : ComponentActivity() {
     private fun openAccessibilitySettings() {
         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
         startActivity(intent)
-    }
-
-    private fun isAccessibilityServiceEnabled(context: Context): Boolean {
-        val expectedServiceName = "${context.packageName}/${com.ridedecider.app.data.accessibility.uber.UberAccessibilityService::class.java.canonicalName}"
-        val enabledServices = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-
-        return enabledServices.split(":").any { it.equals(expectedServiceName, ignoreCase = true) }
     }
 }
 

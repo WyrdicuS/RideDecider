@@ -732,6 +732,65 @@ class UberAccessibilityParserTest {
         assertEquals("UberX", offer.category)
         assertEquals(4.71, offer.passengerRating ?: 0.0, 0.001)
     }
+
+    // =========================================================================
+    // TC-PARSER-35: Cinemática unificada con 1 sola distancia ("9.5 km")
+    // =========================================================================
+    @Test
+    fun tcParser35_singleDistance_assignsUnifiedKinematicsSource() {
+        val ocrText = """
+            OFERTA EXCLUSIVA
+            8,50 €
+            Viaje de 9,5 km (15 min)
+            Aceptar
+        """.trimIndent()
+
+        val offer = parser.parseFromText(ocrText)
+
+        assertEquals(8.50, offer.rawFare!!, 0.001)
+        assertEquals(0.0, offer.pickupDistanceKm!!, 0.001)
+        assertEquals(9.5, offer.tripDistanceKm!!, 0.001)
+        assertEquals(KinematicsSource.UNIFIED_INFERRED, offer.kinematicsSource)
+    }
+
+    // =========================================================================
+    // TC-PARSER-36: Metros normalizados a kilómetros ("500 m" -> 0.5 km)
+    // =========================================================================
+    @Test
+    fun tcParser36_metersNormalizedToKilometers_assignsUnifiedKinematicsSource() {
+        val ocrText = """
+            OFERTA EXCLUSIVA
+            5,00 €
+            Viaje de 500 m (3 min)
+            Aceptar
+        """.trimIndent()
+
+        val offer = parser.parseFromText(ocrText)
+
+        assertEquals(5.00, offer.rawFare!!, 0.001)
+        assertEquals(0.0, offer.pickupDistanceKm!!, 0.001)
+        assertEquals(0.5, offer.tripDistanceKm!!, 0.001)
+        assertEquals(KinematicsSource.UNIFIED_INFERRED, offer.kinematicsSource)
+    }
+
+    // =========================================================================
+    // TC-PARSER-37: OCR corrupto con distancia 0.0 km -> KinematicsSource.OCR_SUSPECT
+    // =========================================================================
+    @Test
+    fun tcParser37_zeroOcrDistance_assignsOcrSuspectSource() {
+        val ocrText = """
+            OFERTA EXCLUSIVA
+            24,00 €
+            Viaje de 0,0 km (10 min)
+            Aceptar
+        """.trimIndent()
+
+        val offer = parser.parseFromText(ocrText)
+
+        assertEquals(24.00, offer.rawFare!!, 0.001)
+        assertEquals(0.0, offer.tripDistanceKm!!, 0.001)
+        assertEquals(KinematicsSource.OCR_SUSPECT, offer.kinematicsSource)
+    }
 }
 
 

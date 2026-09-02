@@ -1,6 +1,9 @@
 package com.ridedecider.app.data.di
 
 import android.content.Context
+import com.ridedecider.app.data.accessibility.AccessibilityServiceStateTracker
+import com.ridedecider.app.data.accessibility.uber.ocr.MlKitUberOfferOcrFallback
+import com.ridedecider.app.data.accessibility.uber.ocr.UberOfferOcrFallbackEngine
 import com.ridedecider.app.data.local.room.RideDeciderDatabase
 import com.ridedecider.app.data.repository.RoomDriverGoalsRepository
 import com.ridedecider.app.data.repository.RoomEarningsRepository
@@ -42,6 +45,7 @@ object ServiceLocator {
         return earningsRepository ?: synchronized(this) {
             earningsRepository ?: RoomEarningsRepository(
                 recordedTripDao = getDatabase(context).recordedTripDao(),
+                decisionSnapshotDao = getDatabase(context).decisionSnapshotDao(),
                 ioDispatcher = Dispatchers.IO
             ).also { earningsRepository = it }
         }
@@ -85,6 +89,28 @@ object ServiceLocator {
             appUpdateManager ?: com.ridedecider.app.domain.manager.AppUpdateManager(
                 context = context.applicationContext
             ).also { appUpdateManager = it }
+        }
+    }
+
+    @Volatile
+    private var accessibilityServiceStateTracker: AccessibilityServiceStateTracker? = null
+
+    fun getAccessibilityServiceStateTracker(context: Context? = null): AccessibilityServiceStateTracker {
+        return accessibilityServiceStateTracker ?: synchronized(this) {
+            accessibilityServiceStateTracker ?: AccessibilityServiceStateTracker().also {
+                accessibilityServiceStateTracker = it
+            }
+        }
+    }
+
+    @Volatile
+    private var ocrFallbackEngine: UberOfferOcrFallbackEngine? = null
+
+    fun getUberOfferOcrFallback(): UberOfferOcrFallbackEngine {
+        return ocrFallbackEngine ?: synchronized(this) {
+            ocrFallbackEngine ?: MlKitUberOfferOcrFallback().also {
+                ocrFallbackEngine = it
+            }
         }
     }
 }

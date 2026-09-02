@@ -115,6 +115,10 @@ class UberOfferValidator {
         // 4. Validaciones de límites numéricos y coherencia física
         val invalidReasons = mutableListOf<UberValidationReason>()
 
+        if (rawOffer.kinematicsSource == KinematicsSource.OCR_SUSPECT) {
+            invalidReasons.add(UberValidationReason.INVALID_DISTANCE)
+        }
+
         if (fare.isNaN() || fare < MIN_FARE || fare > MAX_FARE) {
             invalidReasons.add(UberValidationReason.INVALID_FARE)
         }

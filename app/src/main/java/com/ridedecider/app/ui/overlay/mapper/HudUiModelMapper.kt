@@ -125,6 +125,7 @@ object HudUiModelMapper {
             DecisionReason.REJECT_LOW_HOURLY_RATE -> "Rentabilidad por hora baja"
             DecisionReason.REJECT_EXCESSIVE_PICKUP_DISTANCE -> "Recogida muy lejana"
             DecisionReason.REJECT_EXCESSIVE_PICKUP_TIME -> "Tiempo de recogida excesivo"
+            DecisionReason.REJECT_LOW_EFFECTIVE_KM_RATE -> "Rentabilidad efectiva por km baja"
             DecisionReason.REJECT_LOW_NET_PROFIT -> "Beneficio neto insuficiente"
             DecisionReason.REJECT_LOW_NET_HOURLY_RATE -> "Tarifa horaria neta baja"
             DecisionReason.UNKNOWN_MISSING_FARE -> "Sin importe de tarifa"

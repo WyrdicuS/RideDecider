@@ -1,14 +1,17 @@
 package com.ridedecider.app.data.accessibility.uber
 
+import android.os.Build
 import com.ridedecider.app.data.accessibility.uber.diagnostic.AccessibilityDiagnosticLogger
 import com.ridedecider.app.data.accessibility.uber.diagnostic.DiagnosticMetrics
 import com.ridedecider.app.data.accessibility.uber.diagnostic.UberFullNodeDumper
 import com.ridedecider.app.data.accessibility.uber.diagnostic.UberOfferLightDiagnostic
 import com.ridedecider.app.data.accessibility.uber.diagnostic.UberTreeDumper
+import com.ridedecider.app.data.accessibility.uber.ocr.OcrResult
 import com.ridedecider.app.domain.engine.DecisionEngine
 import com.ridedecider.app.domain.model.TripEvaluation
 import com.ridedecider.app.domain.repository.ProfitabilityConfigProvider
 import com.ridedecider.app.domain.usecase.EvaluateIncomingTripUseCase
+import java.util.Locale
 
 /**
  * Procesador puro en Kotlin que coordina el pipeline completo de análisis de accesibilidad:
@@ -57,6 +60,10 @@ class UberAccessibilityProcessor(
     // Cooldown para el volcado exhaustivo [FULL_NODE_DUMP] periódico (5000 ms)
     private val fullDumpCooldownMs: Long = 5000L
     private var lastFullDumpTimestamp: Long = -fullDumpCooldownMs
+
+    // Cooldown para el disparador de Fallback OCR (2000 ms)
+    private val ocrDebounceIntervalMs: Long = 2000L
+    private var lastOcrAttemptTimestamp: Long = -ocrDebounceIntervalMs
 
     /**
      * Procesa un snapshot de accesibilidad y ejecuta el pipeline de decisión si corresponde.
@@ -172,6 +179,11 @@ class UberAccessibilityProcessor(
         }
 
         if (!validationResult.isValidOffer) {
+            if (shouldTriggerOcrFallback(rawOffer, nodeCount, isStructuralJump, currentTime)) {
+                recordOcrAttempt(currentTime)
+                diagnosticLogger?.logEvent("OCR_FALLBACK_TRIGGERED", "prevNodes=$lastNodeCount | newNodes=$nodeCount | isJump=$isStructuralJump")
+                return ProcessResult.RequiresOcrFallback(rawOffer, nodeCount, isStructuralJump)
+            }
             metrics.invalidOffersCount.incrementAndGet()
             return ProcessResult.InvalidOffer(currentScreenType, validationResult.reasons)
         }
@@ -214,6 +226,95 @@ class UberAccessibilityProcessor(
         return ProcessResult.Evaluated(evaluation)
     }
 
+    fun shouldTriggerOcrFallback(
+        rawOffer: RawUberTripOffer,
+        nodeCount: Int,
+        isStructuralJump: Boolean,
+        currentTime: Long = System.currentTimeMillis(),
+        sdkVersion: Int = Build.VERSION.SDK_INT
+    ): Boolean {
+        if (sdkVersion < Build.VERSION_CODES.R) {
+            return false
+        }
+
+        if (rawOffer.rawFare != null) {
+            return false
+        }
+
+        if (rawOffer.detectedOfferType == UberOfferScreenType.TRIP_CANCELLED ||
+            rawOffer.detectedOfferType == UberOfferScreenType.TRIP_COMPLETED ||
+            rawOffer.detectedOfferType == UberOfferScreenType.ACTIVE_TRIP) {
+            return false
+        }
+
+        if ((currentTime - lastOcrAttemptTimestamp) < ocrDebounceIntervalMs) {
+            return false
+        }
+
+        val hasOfferStructureEvidence = isStructuralJump || (nodeCount in 10..250)
+        return hasOfferStructureEvidence
+    }
+
+    fun recordOcrAttempt(currentTime: Long = System.currentTimeMillis()) {
+        lastOcrAttemptTimestamp = currentTime
+    }
+
+    fun processOcrResult(
+        ocrResult: OcrResult,
+        currentTime: Long = System.currentTimeMillis()
+    ): ProcessResult {
+        if (!ocrResult.hasText) {
+            diagnosticLogger?.logEvent("OCR_FALLBACK_SKIPPED", "Status=${ocrResult.status} | Err=${ocrResult.errorMessage}")
+            return ProcessResult.InvalidOffer(currentScreenType, listOf(UberValidationReason.INCOMPLETE_OFFER))
+        }
+
+        val rawOffer = parser.parseFromText(ocrResult.rawText, timestamp = currentTime)
+
+        diagnosticLogger?.logEvent(
+            "OCR_RAW_OFFER_EXTRACTED",
+            "latency=${ocrResult.totalLatencyMs}ms (cap=${ocrResult.screenshotLatencyMs}ms + ocr=${ocrResult.ocrLatencyMs}ms) | screen=${rawOffer.detectedOfferType} | fare=${rawOffer.rawFare} ${rawOffer.currency} | pickup=${rawOffer.pickupDistanceKm}km/${rawOffer.pickupDurationMinutes}m | trip=${rawOffer.tripDistanceKm}km/${rawOffer.tripDurationMinutes}m"
+        )
+
+        val validationResult = validator.validate(rawOffer)
+        if (!validationResult.isValidOffer) {
+            metrics.invalidOffersCount.incrementAndGet()
+            return ProcessResult.InvalidOffer(validationResult.screenType, validationResult.reasons)
+        }
+
+        val signature = generateOfferSignature(rawOffer)
+        if (signature == lastSignature && (currentTime - lastEvaluationTimestamp) < debounceIntervalMs) {
+            metrics.debouncedCount.incrementAndGet()
+            return ProcessResult.Debounced(signature)
+        }
+
+        val mappingResult = mapper.mapToDomain(rawOffer)
+        if (mappingResult is TripMappingResult.Failure) {
+            metrics.mappingFailuresCount.incrementAndGet()
+            diagnosticLogger?.logPipelineResult("OCR_MAPPING_FAILURE: REASON=${mappingResult.reason}")
+            return ProcessResult.MappingFailure(mappingResult.reason)
+        }
+
+        val trip = (mappingResult as TripMappingResult.Success).trip
+        val config = configProvider.getConfig()
+        val evaluation = evaluateUseCase(trip, config)
+
+        metrics.validOffersCount.incrementAndGet()
+        metrics.evaluationsCount.incrementAndGet()
+        lastSignature = signature
+        lastEvaluationTimestamp = currentTime
+
+        val totalKm = evaluation.metrics?.totalDistanceKm?.let { String.format(Locale.US, "%.1f", it) } ?: "N/A"
+        val grossKm = evaluation.metrics?.grossPerKm?.let { String.format(Locale.US, "%.2f", it) } ?: "N/A"
+        val grossH = evaluation.metrics?.grossPerHour?.let { String.format(Locale.US, "%.2f", it) } ?: "N/A"
+        diagnosticLogger?.logPipelineResult(
+            "EVALUATION (OCR FALLBACK): LATENCY=${ocrResult.totalLatencyMs}ms (cap=${ocrResult.screenshotLatencyMs}ms + ocr=${ocrResult.ocrLatencyMs}ms) | TARIFA=${trip.rawFare} ${trip.currency} | DECISION=${evaluation.decision} | RATIO=$grossKm €/km ($grossH €/h)"
+        )
+
+        evaluationListener?.onTripEvaluation(evaluation)
+
+        return ProcessResult.Evaluated(evaluation)
+    }
+
     private fun generateOfferSignature(rawOffer: RawUberTripOffer): String {
         return "${rawOffer.detectedOfferType?.name}_${rawOffer.rawFare}_${rawOffer.pickupDistanceKm}_${rawOffer.tripDistanceKm}_${rawOffer.tripDurationMinutes}"
     }
@@ -229,6 +330,7 @@ class UberAccessibilityProcessor(
         lastFullDumpTimestamp = -fullDumpCooldownMs
         lastNodeCount = 0
         lastStructuralDumpTimestamp = 0L
+        lastOcrAttemptTimestamp = -ocrDebounceIntervalMs
         metrics.reset()
     }
 
@@ -239,6 +341,7 @@ class UberAccessibilityProcessor(
         data class IgnoredPackage(val packageReceived: String?) : ProcessResult()
         object NullSnapshot : ProcessResult()
         data class InvalidOffer(val screenType: UberOfferScreenType, val reasons: List<UberValidationReason>) : ProcessResult()
+        data class RequiresOcrFallback(val rawOffer: RawUberTripOffer, val nodeCount: Int, val isStructuralJump: Boolean) : ProcessResult()
         data class Debounced(val signature: String) : ProcessResult()
         data class MappingFailure(val reason: TripMappingFailureReason) : ProcessResult()
         data class Evaluated(val evaluation: TripEvaluation) : ProcessResult()

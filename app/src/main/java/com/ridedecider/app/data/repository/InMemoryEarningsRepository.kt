@@ -1,5 +1,6 @@
 package com.ridedecider.app.data.repository
 
+import com.ridedecider.app.data.local.room.entity.DecisionSnapshotEntity
 import com.ridedecider.app.domain.model.RecordedTrip
 import com.ridedecider.app.domain.model.TripTrackingStatus
 import com.ridedecider.app.domain.repository.EarningsRepository
@@ -12,9 +13,39 @@ import java.util.concurrent.ConcurrentHashMap
 class InMemoryEarningsRepository : EarningsRepository {
 
     private val tripsMap = ConcurrentHashMap<String, RecordedTrip>()
+    private val snapshotsMap = ConcurrentHashMap<String, DecisionSnapshotEntity>()
 
     override suspend fun recordTrip(trip: RecordedTrip) {
         tripsMap[trip.id] = trip
+    }
+
+    override suspend fun saveDecisionSnapshot(snapshot: DecisionSnapshotEntity) {
+        snapshotsMap[snapshot.snapshotId] = snapshot
+    }
+
+    override suspend fun updateSnapshotActuals(
+        tripId: String,
+        actualDist: Double?,
+        actualDur: Double?,
+        actualPickupDur: Double?,
+        actualBaseFare: Double?,
+        waitingComp: Double?,
+        cancellationFee: Double?,
+        tip: Double?,
+        finalEarnings: Double?
+    ) {
+        val snapshot = snapshotsMap.values.find { it.tripId == tripId || it.instanceId == tripId } ?: return
+        val updated = snapshot.copy(
+            actualDistanceKm = actualDist ?: snapshot.actualDistanceKm,
+            actualDurationMinutes = actualDur ?: snapshot.actualDurationMinutes,
+            actualPickupDurationMinutes = actualPickupDur ?: snapshot.actualPickupDurationMinutes,
+            actualBaseFareEur = actualBaseFare ?: snapshot.actualBaseFareEur,
+            waitingCompensationEur = waitingComp ?: snapshot.waitingCompensationEur,
+            cancellationFeeEur = cancellationFee ?: snapshot.cancellationFeeEur,
+            tipEur = tip ?: snapshot.tipEur,
+            finalEarningsEur = finalEarnings ?: snapshot.finalEarningsEur
+        )
+        snapshotsMap[snapshot.snapshotId] = updated
     }
 
     override suspend fun updateTripStatus(

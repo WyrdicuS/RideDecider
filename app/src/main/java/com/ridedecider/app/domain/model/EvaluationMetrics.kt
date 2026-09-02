@@ -11,5 +11,10 @@ data class EvaluationMetrics(
     val netProfit: Double,
     val grossPerKm: Double,
     val grossPerHour: Double,
-    val netPerHour: Double
+    val netPerHour: Double,
+    val pickupSpeedKmh: Double? = null,
+    val pickupDistanceRatio: Double = 0.0,
+    val pickupTimeRatio: Double = 0.0,
+    val effectiveGrossPerKm: Double = grossPerKm,
+    val profitabilityScore: Int = 100
 )

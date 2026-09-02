@@ -94,12 +94,22 @@ class DecisionEngine(
         val grossProfit = rawFare
         val netProfit = rawFare - estimatedOperatingCost
 
-        // 4. Cálculos de ratios de rentabilidad
+        // 4. Cálculos de ratios de rentabilidad y métricas de recogida
         val grossPerKm = rawFare / totalDistanceKm
         val grossPerHour = rawFare / totalDurationHours
         val netPerHour = netProfit / totalDurationHours
 
-        val metrics = EvaluationMetrics(
+        val pickupSpeedKmh = if (pickupDistanceKm > 0.0 && pickupDurationMinutes > 0.0) {
+            pickupDistanceKm / (pickupDurationMinutes / 60.0)
+        } else null
+
+        val pickupDistanceRatio = if (totalDistanceKm > 0.0) (pickupDistanceKm / totalDistanceKm) else 0.0
+        val pickupTimeRatio = if (totalDurationMinutes > 0.0) (pickupDurationMinutes / totalDurationMinutes) else 0.0
+
+        val effectiveDistance = (pickupDistanceKm * config.pickupDistanceWeight) + tripDistanceKm
+        val effectiveGrossPerKm = if (effectiveDistance > 0.0) (rawFare / effectiveDistance) else 0.0
+
+        val baseMetrics = EvaluationMetrics(
             totalDistanceKm = totalDistanceKm,
             totalDurationMinutes = totalDurationMinutes,
             estimatedOperatingCost = estimatedOperatingCost,
@@ -107,10 +117,18 @@ class DecisionEngine(
             netProfit = netProfit,
             grossPerKm = grossPerKm,
             grossPerHour = grossPerHour,
-            netPerHour = netPerHour
+            netPerHour = netPerHour,
+            pickupSpeedKmh = pickupSpeedKmh,
+            pickupDistanceRatio = pickupDistanceRatio,
+            pickupTimeRatio = pickupTimeRatio,
+            effectiveGrossPerKm = effectiveGrossPerKm,
+            profitabilityScore = 100
         )
 
-        // 5. Evaluación de reglas de decisión
+        val score = profitabilityClassifier.calculateScore(baseMetrics, config, pickupDistanceKm)
+        val metrics = baseMetrics.copy(profitabilityScore = score)
+
+        // 5. Evaluación de reglas de decisión (Hard Rules)
         val rejectReasons = mutableListOf<DecisionReason>()
 
         if (pickupDistanceKm > config.maxPickupDistanceKm) {
@@ -123,6 +141,10 @@ class DecisionEngine(
 
         if (grossPerKm < config.minGrossPerKmRate) {
             rejectReasons.add(DecisionReason.REJECT_LOW_KM_RATE)
+        }
+
+        if (effectiveGrossPerKm < config.minGrossPerKmRate && !rejectReasons.contains(DecisionReason.REJECT_LOW_KM_RATE)) {
+            rejectReasons.add(DecisionReason.REJECT_LOW_EFFECTIVE_KM_RATE)
         }
 
         if (grossPerHour < config.minGrossHourlyRate) {

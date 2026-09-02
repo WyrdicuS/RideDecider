@@ -252,4 +252,53 @@ class UberOfferValidatorTest {
         assertEquals(UberOfferScreenType.ACTIVE_TRIP, result.screenType)
         assertFalse(result.isValidOffer)
     }
+
+    // =========================================================================
+    // TC-VAL-14: Oferta con OCR_SUSPECT (distancia 0.0 corrupta)
+    // =========================================================================
+    @Test
+    fun tcVal14_ocrSuspectKinematics_shouldReturnInvalidDistance() {
+        val raw = createValidRawOffer(
+            pickupDistance = 0.0,
+            tripDistance = 0.0
+        ).copy(kinematicsSource = KinematicsSource.OCR_SUSPECT)
+
+        val result = validator.validate(raw)
+
+        assertEquals(UberOfferScreenType.UNKNOWN, result.screenType)
+        assertFalse(result.isValidOffer)
+        assertTrue(result.reasons.contains(UberValidationReason.INVALID_DISTANCE))
+    }
+
+    // =========================================================================
+    // TC-VAL-15: Oferta con cinemática unificada legítima
+    // =========================================================================
+    @Test
+    fun tcVal15_unifiedInferredKinematics_shouldBeValidOffer() {
+        val raw = createValidRawOffer(
+            pickupDistance = 0.0,
+            tripDistance = 9.5
+        ).copy(kinematicsSource = KinematicsSource.UNIFIED_INFERRED)
+
+        val result = validator.validate(raw)
+
+        assertEquals(UberOfferScreenType.TRIP_OFFER, result.screenType)
+        assertTrue(result.isValidOffer)
+    }
+
+    // =========================================================================
+    // TC-VAL-16: Oferta con recogida explícita 0 m
+    // =========================================================================
+    @Test
+    fun tcVal16_explicitZeroPickup_shouldBeValidOffer() {
+        val raw = createValidRawOffer(
+            pickupDistance = 0.0,
+            tripDistance = 5.2
+        ).copy(kinematicsSource = KinematicsSource.EXPLICIT_ZERO_PICKUP)
+
+        val result = validator.validate(raw)
+
+        assertEquals(UberOfferScreenType.TRIP_OFFER, result.screenType)
+        assertTrue(result.isValidOffer)
+    }
 }

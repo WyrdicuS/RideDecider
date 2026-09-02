@@ -202,12 +202,12 @@ class RawUberTripOfferMapperTest {
     }
 
     // =========================================================================
-    // TC-MAP-10: ID determinista para los mismos datos
+    // TC-MAP-10: Mismo objeto de oferta mantiene su UUID instanceId
     // =========================================================================
     @Test
-    fun tcMap10_sameData_shouldProduceSameDeterministicId() {
+    fun tcMap10_sameData_shouldProduceSameInstanceId() {
         val raw1 = createValidRawOffer(timestamp = 1700000000000L, fare = 20.0)
-        val raw2 = createValidRawOffer(timestamp = 1700000000000L, fare = 20.0)
+        val raw2 = raw1.copy() // Misma instancia copiada conserva instanceId
 
         val result1 = mapper.mapToDomain(raw1) as TripMappingResult.Success
         val result2 = mapper.mapToDomain(raw2) as TripMappingResult.Success
@@ -216,20 +216,18 @@ class RawUberTripOfferMapperTest {
     }
 
     // =========================================================================
-    // TC-MAP-11: Ofertas diferentes producen IDs distintos
+    // TC-MAP-11: Instancias independientes obtienen UUIDs unívocos aislados
     // =========================================================================
     @Test
-    fun tcMap11_differentData_shouldProduceDifferentIds() {
+    fun tcMap11_differentInstances_shouldProduceDifferentInstanceIds() {
         val raw1 = createValidRawOffer(fare = 15.0, pickupAddress = "Calle Mayor 10")
-        val raw2 = createValidRawOffer(fare = 25.0, pickupAddress = "Calle Mayor 10")
-        val raw3 = createValidRawOffer(fare = 15.0, pickupAddress = "Plaza de España 1")
+        val raw2 = createValidRawOffer(fare = 15.0, pickupAddress = "Calle Mayor 10")
 
         val id1 = (mapper.mapToDomain(raw1) as TripMappingResult.Success).trip.id
         val id2 = (mapper.mapToDomain(raw2) as TripMappingResult.Success).trip.id
-        val id3 = (mapper.mapToDomain(raw3) as TripMappingResult.Success).trip.id
 
         assertNotEquals(id1, id2)
-        assertNotEquals(id1, id3)
+        assertTrue("El ID debe ser un UUID de 36 caracteres", id1.length == 36 && id2.length == 36)
     }
 
     // =========================================================================

@@ -1,5 +1,6 @@
 package com.ridedecider.app.domain.engine
 
+import com.ridedecider.app.data.local.room.entity.DecisionSnapshotEntity
 import com.ridedecider.app.domain.model.DriverEconomicContext
 import com.ridedecider.app.domain.model.DriverGoals
 import com.ridedecider.app.domain.model.EarningsProgress
@@ -11,6 +12,7 @@ import com.ridedecider.app.domain.model.TripTrackingStatus
 import com.ridedecider.app.domain.repository.DriverGoalsRepository
 import com.ridedecider.app.domain.repository.EarningsRepository
 import java.util.Calendar
+import java.util.UUID
 
 /**
  * Gestor de seguimiento económico y cálculo de ciclos temporales (diario, semanal, mensual).
@@ -33,7 +35,7 @@ class EarningsTracker(
         }
 
     /**
-     * Registra una oferta evaluada por el DecisionEngine.
+     * Registra una oferta evaluada por el DecisionEngine y congela su snapshot inmutable de decisión (Learning Data Foundation).
      * Nota: Este registro NO suma a las ganancias reales hasta que se confirme como COMPLETED.
      */
     suspend fun recordEvaluatedOffer(trip: Trip, evaluation: TripEvaluation, timestamp: Long = System.currentTimeMillis()): RecordedTrip {
@@ -46,6 +48,73 @@ class EarningsTracker(
             recordedTimestamp = timestamp
         )
         earningsRepository.recordTrip(recordedTrip)
+
+        // Congelar fotografía inmutable de la decisión en t0 (Learning Data Foundation)
+        val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        val hourOfDay = calendar.get(Calendar.HOUR_OF_DAY)
+        val minuteOfHour = calendar.get(Calendar.MINUTE)
+        val timeBucket = when (hourOfDay) {
+            in 7..9 -> "MORNING_RUSH"
+            in 10..13 -> "DAY"
+            in 14..16 -> "MIDDAY_EXIT"
+            in 17..20 -> "EVENING_RUSH"
+            else -> "NIGHT"
+        }
+
+        val snapshotEntity = DecisionSnapshotEntity(
+            snapshotId = UUID.randomUUID().toString(),
+            instanceId = trip.id,
+            tripId = trip.id,
+            recordedTimestamp = timestamp,
+            appVersion = "1.0.1",
+            engineVersion = "2.0",
+            offerType = trip.offerType.name,
+            category = trip.category.name,
+            estimatedFareEur = trip.rawFare,
+            currency = trip.currency,
+            estimatedPickupDistanceKm = trip.pickupDistanceKm,
+            estimatedPickupDurationMinutes = trip.pickupDurationMinutes,
+            estimatedTripDistanceKm = trip.tripDistanceKm,
+            estimatedTripDurationMinutes = trip.tripDurationMinutes,
+            estimatedTotalDistanceKm = evaluation.metrics?.totalDistanceKm,
+            estimatedTotalDurationMinutes = evaluation.metrics?.totalDurationMinutes,
+            grossPerKm = evaluation.metrics?.grossPerKm,
+            grossPerHour = evaluation.metrics?.grossPerHour,
+            effectiveGrossPerKm = evaluation.metrics?.effectiveGrossPerKm,
+            estimatedOperatingCost = evaluation.metrics?.estimatedOperatingCost,
+            estimatedNetProfit = evaluation.metrics?.netProfit,
+            netPerHour = evaluation.metrics?.netPerHour,
+            pickupSpeedKmh = evaluation.metrics?.pickupSpeedKmh,
+            pickupDistanceRatio = evaluation.metrics?.pickupDistanceRatio ?: 0.0,
+            pickupTimeRatio = evaluation.metrics?.pickupTimeRatio ?: 0.0,
+            profitabilityScore = evaluation.metrics?.profitabilityScore ?: 100,
+            decision = evaluation.decision.name,
+            decisionReasonsCommaSeparated = evaluation.reasons.joinToString(",") { it.name },
+            profitabilityLevel = evaluation.profitabilityLevel.name,
+            kinematicsSource = "LEGACY_UNSPECIFIED",
+            dayOfWeek = dayOfWeek,
+            hourOfDay = hourOfDay,
+            minuteOfHour = minuteOfHour,
+            timeBucket = timeBucket,
+            wazeEstimatedDurationMinutes = null,
+            wazeAvailable = false,
+            uberWazeDurationDeltaMinutes = null,
+            wazeEstimateTimestamp = null,
+            actualDistanceKm = null,
+            actualDurationMinutes = null,
+            actualPickupDurationMinutes = null,
+            actualBaseFareEur = null,
+            waitingCompensationEur = null,
+            cancellationFeeEur = null,
+            tipEur = null,
+            finalEarningsEur = null
+        )
+
+        try {
+            earningsRepository.saveDecisionSnapshot(snapshotEntity)
+        } catch (_: Exception) {}
+
         return recordedTrip
     }
 
@@ -100,6 +169,12 @@ class EarningsTracker(
             completedTimestamp = completedTimestamp,
             durationMinutes = durationMinutes
         )
+        // Actualizar los resultados reales en el snapshot de decisión correspondiente
+        earningsRepository.updateSnapshotActuals(
+            tripId = tripId,
+            actualDur = durationMinutes,
+            finalEarnings = finalEarnings
+        )
     }
 
     /**
@@ -130,6 +205,13 @@ class EarningsTracker(
             cancellationReason = reason,
             cancelledTimestamp = timestamp
         )
+        // Actualizar la compensación de cancelación en el snapshot si aplica
+        if (cancellationFee != null && cancellationFee > 0.0) {
+            earningsRepository.updateSnapshotActuals(
+                tripId = tripId,
+                cancellationFee = cancellationFee
+            )
+        }
     }
 
     /**

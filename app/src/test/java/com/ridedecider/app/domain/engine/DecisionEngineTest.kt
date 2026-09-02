@@ -1,5 +1,10 @@
 package com.ridedecider.app.domain.engine
 
+import com.ridedecider.app.data.accessibility.uber.KinematicsSource
+import com.ridedecider.app.data.accessibility.uber.RawUberTripOffer
+import com.ridedecider.app.data.accessibility.uber.UberOfferScreenType
+import com.ridedecider.app.data.accessibility.uber.UberOfferValidator
+import com.ridedecider.app.data.accessibility.uber.UberValidationReason
 import com.ridedecider.app.domain.model.Decision
 import com.ridedecider.app.domain.model.DecisionReason
 import com.ridedecider.app.domain.model.ProfitabilityConfig
@@ -7,6 +12,7 @@ import com.ridedecider.app.domain.model.Trip
 import com.ridedecider.app.domain.model.TripOfferType
 import com.ridedecider.app.domain.model.UberCategory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -421,6 +427,171 @@ class DecisionEngineTest {
 
         // netPerHour = 23.80 / 0.5 = 47.60 €/h
         assertEquals(47.60, metrics.netPerHour, delta)
+    }
+
+    // =========================================================================
+    // 11. TESTS A-J SMART PROFITABILITY ENGINE 2.0
+    // =========================================================================
+    @Test
+    fun testA_standardShortUrbanTrip_shouldReturnAccept() {
+        val trip = createSampleTrip(
+            rawFare = 10.0,
+            pickupDistanceKm = 1.0,
+            pickupDurationMinutes = 5.0,
+            tripDistanceKm = 1.0,
+            tripDurationMinutes = 5.0
+        )
+        val evaluation = engine.evaluate(trip, defaultConfig)
+        assertEquals(Decision.ACCEPT, evaluation.decision)
+        assertNotNull(evaluation.metrics)
+        assertEquals(12.0, evaluation.metrics!!.pickupSpeedKmh!!, delta)
+    }
+
+    @Test
+    fun testB_madridSevereCongestionPickup_shouldReturnRejectForPickupTimeOrCongestion() {
+        val trip = createSampleTrip(
+            rawFare = 10.0,
+            pickupDistanceKm = 2.0,
+            pickupDurationMinutes = 20.0,
+            tripDistanceKm = 1.0,
+            tripDurationMinutes = 5.0
+        )
+        val evaluation = engine.evaluate(trip, defaultConfig)
+        assertEquals(Decision.REJECT, evaluation.decision)
+        assertTrue(evaluation.reasons.contains(DecisionReason.REJECT_EXCESSIVE_PICKUP_TIME))
+        assertEquals(6.0, evaluation.metrics!!.pickupSpeedKmh!!, delta)
+    }
+
+    @Test
+    fun testC_longPickupDistance_shouldReturnRejectForExcessivePickupDistance() {
+        val trip = createSampleTrip(
+            rawFare = 10.0,
+            pickupDistanceKm = 5.0,
+            pickupDurationMinutes = 10.0,
+            tripDistanceKm = 1.0,
+            tripDurationMinutes = 5.0
+        )
+        val evaluation = engine.evaluate(trip, defaultConfig)
+        assertEquals(Decision.REJECT, evaluation.decision)
+        assertTrue(evaluation.reasons.contains(DecisionReason.REJECT_EXCESSIVE_PICKUP_DISTANCE))
+    }
+
+    @Test
+    fun testD_shortPickupLongTrip_shouldReturnAccept() {
+        val trip = createSampleTrip(
+            rawFare = 15.0,
+            pickupDistanceKm = 1.0,
+            pickupDurationMinutes = 3.0,
+            tripDistanceKm = 10.0,
+            tripDurationMinutes = 20.0
+        )
+        val evaluation = engine.evaluate(trip, defaultConfig)
+        assertEquals(Decision.ACCEPT, evaluation.decision)
+        assertEquals(20.0, evaluation.metrics!!.pickupSpeedKmh!!, delta)
+    }
+
+    @Test
+    fun testE1_explicitZeroPickupDistance_withLongTime_returnsAcceptAndNullSpeed() {
+        val customConfig = defaultConfig.copy(maxPickupTimeMinutes = 20.0)
+        val trip = createSampleTrip(
+            rawFare = 20.0,
+            pickupDistanceKm = 0.0,
+            pickupDurationMinutes = 15.0,
+            tripDistanceKm = 2.0,
+            tripDurationMinutes = 10.0
+        )
+        val evaluation = engine.evaluate(trip, customConfig)
+        assertEquals(Decision.ACCEPT, evaluation.decision)
+        assertNull("pickupSpeedKmh debe ser null cuando pickupDistanceKm es 0.0", evaluation.metrics!!.pickupSpeedKmh)
+    }
+
+    @Test
+    fun testE2_exceedingMaxPickupTime_returnsExcessivePickupTimeReject() {
+        val configWith9MinMax = defaultConfig.copy(maxPickupTimeMinutes = 9.0)
+        val trip = createSampleTrip(
+            rawFare = 20.0,
+            pickupDistanceKm = 2.0,
+            pickupDurationMinutes = 15.0,
+            tripDistanceKm = 2.0,
+            tripDurationMinutes = 10.0
+        )
+        val evaluation = engine.evaluate(trip, configWith9MinMax)
+        assertEquals(Decision.REJECT, evaluation.decision)
+        assertTrue(evaluation.reasons.contains(DecisionReason.REJECT_EXCESSIVE_PICKUP_TIME))
+    }
+
+    @Test
+    fun testJ_kinematicsSourceOcrSuspect_isSafelyProtectedInValidator() {
+        val rawOffer = RawUberTripOffer(
+            rawFare = 24.0,
+            currency = "EUR",
+            pickupDistanceKm = 0.0,
+            pickupDurationMinutes = 5.0,
+            tripDistanceKm = 0.0,
+            tripDurationMinutes = 10.0,
+            detectedOfferType = UberOfferScreenType.TRIP_OFFER,
+            kinematicsSource = KinematicsSource.OCR_SUSPECT
+        )
+        val validationResult = UberOfferValidator().validate(rawOffer)
+        assertFalse("OCR_SUSPECT debe ser descartado por el validador", validationResult.isValidOffer)
+        assertTrue(validationResult.reasons.contains(UberValidationReason.INVALID_DISTANCE))
+    }
+
+    @Test
+    fun testF_goodKmRateLowHourlyRate_shouldReturnRejectLowHourlyRate() {
+        val trip = createSampleTrip(
+            rawFare = 22.0,
+            pickupDistanceKm = 3.0,
+            pickupDurationMinutes = 15.0,
+            tripDistanceKm = 15.0,
+            tripDurationMinutes = 75.0
+        )
+        val evaluation = engine.evaluate(trip, defaultConfig)
+        assertEquals(Decision.REJECT, evaluation.decision)
+        assertTrue(evaluation.reasons.contains(DecisionReason.REJECT_LOW_HOURLY_RATE))
+    }
+
+    @Test
+    fun testG_zeroPickupZeroDuration_shouldEvaluateWithoutZeroDivision() {
+        val trip = createSampleTrip(
+            rawFare = 12.0,
+            pickupDistanceKm = 0.0,
+            pickupDurationMinutes = 0.0,
+            tripDistanceKm = 5.0,
+            tripDurationMinutes = 10.0
+        )
+        val evaluation = engine.evaluate(trip, defaultConfig)
+        assertEquals(Decision.ACCEPT, evaluation.decision)
+        assertNull(evaluation.metrics!!.pickupSpeedKmh)
+        assertEquals(2.4, evaluation.metrics!!.grossPerKm, delta)
+    }
+
+    @Test
+    fun testH_zeroTotalDuration_shouldReturnUnknownWithoutNanOrInfinity() {
+        val trip = createSampleTrip(
+            rawFare = 12.0,
+            pickupDistanceKm = 1.0,
+            pickupDurationMinutes = 0.0,
+            tripDistanceKm = 5.0,
+            tripDurationMinutes = 0.0
+        )
+        val evaluation = engine.evaluate(trip, defaultConfig)
+        assertEquals(Decision.UNKNOWN, evaluation.decision)
+        assertNull(evaluation.metrics)
+    }
+
+    @Test
+    fun testI_zeroTotalDistance_shouldReturnUnknownWithoutNanOrInfinity() {
+        val trip = createSampleTrip(
+            rawFare = 12.0,
+            pickupDistanceKm = 0.0,
+            pickupDurationMinutes = 5.0,
+            tripDistanceKm = 0.0,
+            tripDurationMinutes = 10.0
+        )
+        val evaluation = engine.evaluate(trip, defaultConfig)
+        assertEquals(Decision.UNKNOWN, evaluation.decision)
+        assertNull(evaluation.metrics)
     }
 
     // =========================================================================

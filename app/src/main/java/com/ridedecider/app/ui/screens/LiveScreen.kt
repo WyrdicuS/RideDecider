@@ -47,6 +47,8 @@ import com.ridedecider.app.ui.theme.RdSurface
 import com.ridedecider.app.ui.theme.RdSurfaceCard
 import com.ridedecider.app.ui.theme.RdTextPrimary
 import com.ridedecider.app.ui.theme.RdTextSecondary
+import com.ridedecider.app.data.accessibility.AccessibilityServiceStatus
+import com.ridedecider.app.ui.theme.RdStatusWarning
 import com.ridedecider.app.ui.theme.RdTextTertiary
 import com.ridedecider.app.ui.theme.RdTripStateActive
 import com.ridedecider.app.ui.theme.RdTripStateAssigned
@@ -59,7 +61,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun LiveScreen(
-    isAccessibilityEnabled: Boolean,
+    accessibilityStatus: AccessibilityServiceStatus = AccessibilityServiceStatus.DISABLED,
+    isAccessibilityEnabled: Boolean = accessibilityStatus.isOperative,
     hasOverlayPermission: Boolean,
     earningsTracker: EarningsTracker,
     modifier: Modifier = Modifier
@@ -102,9 +105,29 @@ fun LiveScreen(
                     fontWeight = FontWeight.Black,
                     letterSpacing = (-0.3).sp
                 )
+                val statusText: String
+                val statusColor: Color
+                when (accessibilityStatus) {
+                    AccessibilityServiceStatus.CONNECTED -> {
+                        statusText = "RideDecider está activo · Escuchando Uber"
+                        statusColor = RdStatusAhead
+                    }
+                    AccessibilityServiceStatus.INTERRUPTED -> {
+                        statusText = "Servicio pausado por el sistema"
+                        statusColor = RdStatusWarning
+                    }
+                    AccessibilityServiceStatus.ENABLED_DISCONNECTED -> {
+                        statusText = "Servicio habilitado · Esperando vinculación"
+                        statusColor = RdStatusWarning
+                    }
+                    AccessibilityServiceStatus.DISABLED -> {
+                        statusText = if (isAccessibilityEnabled) "RideDecider está activo · Escuchando Uber" else "Servicio de Accesibilidad inactivo"
+                        statusColor = if (isAccessibilityEnabled) RdStatusAhead else RdStatusBehind
+                    }
+                }
                 Text(
-                    text = if (isAccessibilityEnabled) "RideDecider está activo · Escuchando Uber" else "Servicio de Accesibilidad inactivo",
-                    color = if (isAccessibilityEnabled) RdStatusAhead else RdStatusBehind,
+                    text = statusText,
+                    color = statusColor,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold
                 )

@@ -50,6 +50,20 @@ class HudOverlayManager(private val context: Context) {
     companion object {
         private const val TAG = "HudOverlayManager"
         private const val SAFETY_TIMEOUT_MS = 6000L // Timeout de seguridad de 6s
+
+        /**
+         * Resuelve el tipo de ventana de WindowManager según la versión del SDK de Android.
+         * En API 26+ (Android 8.0+) utiliza TYPE_APPLICATION_OVERLAY.
+         * En API 24-25 (Android 7.0-7.1) utiliza TYPE_SYSTEM_ALERT como fallback compatible.
+         */
+        fun resolveWindowType(sdkVersion: Int = Build.VERSION.SDK_INT): Int {
+            return if (sdkVersion >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+            }
+        }
     }
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
@@ -204,7 +218,7 @@ class HudOverlayManager(private val context: Context) {
     }
 
     private fun createLayoutParams(): WindowManager.LayoutParams {
-        val windowType = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        val windowType = resolveWindowType()
 
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,

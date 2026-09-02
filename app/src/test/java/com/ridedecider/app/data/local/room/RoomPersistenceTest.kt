@@ -57,7 +57,7 @@ class RoomPersistenceTest {
     fun setUp() {
         tripDao = FakeRecordedTripDao()
         goalsDao = FakeDriverGoalsDao()
-        earningsRepository = RoomEarningsRepository(tripDao, Dispatchers.Unconfined)
+        earningsRepository = RoomEarningsRepository(recordedTripDao = tripDao, decisionSnapshotDao = null, ioDispatcher = Dispatchers.Unconfined)
         goalsRepository = RoomDriverGoalsRepository(goalsDao, Dispatchers.Unconfined)
         tracker = EarningsTracker(goalsRepository, earningsRepository)
     }

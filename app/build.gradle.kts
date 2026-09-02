@@ -90,6 +90,9 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    // ML Kit Text Recognition On-Device
+    implementation(libs.mlkitTextRecognition)
+
     testImplementation(libs.junit)
     testImplementation(libs.androidx.room.testing)
     testImplementation(libs.androidx.junit)

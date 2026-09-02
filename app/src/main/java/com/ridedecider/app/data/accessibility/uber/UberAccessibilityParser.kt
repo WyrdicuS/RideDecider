@@ -231,7 +231,86 @@ class UberAccessibilityParser {
             cancellationReasonText = cancellationReasonText,
             cancellationReason = cancellationReason,
             finalEarningsEur = finalEarnings,
-            sourceTimestamp = timestamp
+            sourceTimestamp = timestamp,
+            kinematicsSource = contextualKinematics.kinematicsSource
+        )
+    }
+
+    /**
+     * Analiza el texto bruto reconocido por OCR local on-device y extrae los datos de la oferta.
+     * Reutiliza exactamente los mismos extractores y regex de la Ruta A.
+     *
+     * @param ocrText Cadenas de texto devueltas por el motor OCR.
+     * @param timestamp Timestamp de captura.
+     * @return [RawUberTripOffer] con los datos detectados o campos en `null` si no hay texto suficiente.
+     */
+    fun parseFromText(
+        ocrText: String?,
+        timestamp: Long = System.currentTimeMillis()
+    ): RawUberTripOffer {
+        if (ocrText.isNullOrBlank()) {
+            return RawUberTripOffer(
+                detectedOfferType = UberOfferScreenType.NO_OFFER,
+                sourceTimestamp = timestamp
+            )
+        }
+
+        val lines = ocrText.lines().map { cleanText(it) }.filter { it.isNotBlank() }
+        if (lines.isEmpty()) {
+            return RawUberTripOffer(
+                detectedOfferType = UberOfferScreenType.NO_OFFER,
+                sourceTimestamp = timestamp
+            )
+        }
+
+        val fakeNodes = lines.map { text ->
+            UberNodeSnapshot(text = text, isVisibleToUser = true)
+        }
+
+        val fareResult = extractFare(fakeNodes)
+        val allDistances = extractDistances(lines)
+        val allDurations = extractDurations(lines)
+        val category = extractCategory(lines)
+        val isCash = extractCashPayment(lines)
+        val rating = extractPassengerRating(lines)
+        val (pickupAddr, dropoffAddr) = extractAddresses(fakeNodes)
+
+        val contextualKinematics = extractContextualKinematics(lines, allDistances, allDurations)
+        val cancellationFee = extractCancellationFee(lines)
+        val cancellationReason = extractCancellationReason(lines)
+        val cancellationReasonText = extractCancellationReasonText(lines)
+        val hasCompletion = hasCompletionMessage(lines)
+        val finalEarnings = if (hasCompletion) fareResult?.first else null
+
+        val detectedScreenType = detectScreenTypeWithEvidence(
+            allNodes = fakeNodes,
+            content = lines,
+            fareResult = fareResult,
+            hasKinematics = contextualKinematics.hasAnyKinematics(),
+            hasCategory = category != null,
+            hasCancellationMessage = cancellationReasonText != null || cancellationReason != null,
+            hasCompletionMessage = hasCompletion
+        )
+
+        return RawUberTripOffer(
+            rawFare = fareResult?.first,
+            currency = fareResult?.second,
+            pickupDistanceKm = contextualKinematics.pickupDistanceKm,
+            pickupDurationMinutes = contextualKinematics.pickupDurationMinutes,
+            tripDistanceKm = contextualKinematics.tripDistanceKm,
+            tripDurationMinutes = contextualKinematics.tripDurationMinutes,
+            pickupAddress = pickupAddr,
+            dropoffAddress = dropoffAddr,
+            category = category,
+            isCashPayment = isCash,
+            passengerRating = rating,
+            detectedOfferType = detectedScreenType,
+            cancellationFee = cancellationFee,
+            cancellationReasonText = cancellationReasonText,
+            cancellationReason = cancellationReason,
+            finalEarningsEur = finalEarnings,
+            sourceTimestamp = timestamp,
+            kinematicsSource = contextualKinematics.kinematicsSource
         )
     }
 
@@ -412,7 +491,8 @@ class UberAccessibilityParser {
         val pickupDistanceKm: Double?,
         val pickupDurationMinutes: Double?,
         val tripDistanceKm: Double?,
-        val tripDurationMinutes: Double?
+        val tripDurationMinutes: Double?,
+        val kinematicsSource: KinematicsSource = KinematicsSource.LEGACY_UNSPECIFIED
     ) {
         fun hasAnyKinematics(): Boolean {
             return pickupDistanceKm != null || pickupDurationMinutes != null || tripDistanceKm != null || tripDurationMinutes != null
@@ -464,11 +544,23 @@ class UberAccessibilityParser {
         val finalPickupDur = pickupDur ?: if (allDurations.size > 1) allDurations[0] else if (allDurations.isNotEmpty()) 0.0 else null
         val finalTripDur = tripDur ?: if (allDurations.size > 1) allDurations[1] else allDurations.firstOrNull()
 
+        // Clasificación semántica del origen de la cinemática
+        val source = when {
+            finalPickupDist == null && finalTripDist == null -> KinematicsSource.MISSING
+            (finalTripDist != null && finalTripDist <= 0.0) -> KinematicsSource.OCR_SUSPECT
+            (finalPickupDist != null && finalPickupDist > 0.0 && finalTripDist != null && finalTripDist > 0.0) -> KinematicsSource.EXPLICIT_DUAL
+            (pickupDist != null && pickupDist == 0.0 && finalTripDist != null && finalTripDist > 0.0) -> KinematicsSource.EXPLICIT_ZERO_PICKUP
+            (pickupDist == null && allDistances.size == 1 && finalTripDist != null && finalTripDist > 0.0) -> KinematicsSource.UNIFIED_INFERRED
+            (finalPickupDist == 0.0 && finalTripDist != null && finalTripDist > 0.0) -> KinematicsSource.UNIFIED_INFERRED
+            else -> KinematicsSource.LEGACY_UNSPECIFIED
+        }
+
         return KinematicsResult(
             pickupDistanceKm = finalPickupDist,
             pickupDurationMinutes = finalPickupDur,
             tripDistanceKm = finalTripDist,
-            tripDurationMinutes = finalTripDur
+            tripDurationMinutes = finalTripDur,
+            kinematicsSource = source
         )
     }
 
