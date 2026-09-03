@@ -206,13 +206,13 @@ class UberAccessibilityProcessorTest {
         )
         assertTrue(result2 is UberAccessibilityProcessor.ProcessResult.Debounced)
 
-        // Tercer evento tras expirar debounce en t = 1400 ms (> 300 ms) -> Evaluated
+        // Tercer evento de la misma oferta consumida en t = 1400 ms -> Permanece Debounced por Consumo Semántico
         val result3 = processor.processSnapshot(
             snapshot,
             packageName = UberAccessibilityConstants.UBER_PACKAGE_NAME,
             currentTime = 1400L
         )
-        assertTrue(result3 is UberAccessibilityProcessor.ProcessResult.Evaluated)
+        assertTrue(result3 is UberAccessibilityProcessor.ProcessResult.Debounced)
     }
 
     // =========================================================================

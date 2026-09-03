@@ -35,6 +35,16 @@ enum class UberOfferScreenType {
     TRIP_COMPLETED,
 
     /**
+     * Pantalla de reserva programada de Uber (ej. "Reservas", "Hora de recogida: 18:30").
+     */
+    RESERVATION_SCREEN,
+
+    /**
+     * Pantalla de historial, detalles de viajes anteriores o resumen de actividad.
+     */
+    HISTORY_SCREEN,
+
+    /**
      * Estado no determinado o datos visuales insuficientes para clasificar la pantalla.
      */
     UNKNOWN

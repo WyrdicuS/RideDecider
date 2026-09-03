@@ -58,6 +58,22 @@ class UberOfferValidator {
             )
         }
 
+        if (rawOffer.detectedOfferType == UberOfferScreenType.RESERVATION_SCREEN) {
+            return UberOfferValidationResult(
+                screenType = UberOfferScreenType.RESERVATION_SCREEN,
+                isValidOffer = false,
+                reasons = listOf(UberValidationReason.MISSING_OFFER_TYPE)
+            )
+        }
+
+        if (rawOffer.detectedOfferType == UberOfferScreenType.HISTORY_SCREEN) {
+            return UberOfferValidationResult(
+                screenType = UberOfferScreenType.HISTORY_SCREEN,
+                isValidOffer = false,
+                reasons = listOf(UberValidationReason.MISSING_OFFER_TYPE)
+            )
+        }
+
         // 2. Comprobar si son datos aislados (ej. únicamente un número en pantalla sin tipo de oferta ni estructura)
         val hasAnyKinematicData = rawOffer.pickupDistanceKm != null ||
                 rawOffer.pickupDurationMinutes != null ||

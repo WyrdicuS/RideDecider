@@ -31,11 +31,23 @@ class UberAccessibilityParser {
         // Indicadores de demanda del mapa (ej. "1-18 min", "1-15 min") que NO son duración de viaje
         private val DEMAND_RANGE_REGEX = Regex("""(?i)\b\d+\s*[-–]\s*\d+\s*(?:min|mins|minutos?)\b""")
 
-        // Palabras clave para descartar números que pertenecen a saldos o acumulados
+        // Regex de formato hora (ej. "18:30", "18:15") que NO son precios
+        private val TIME_COLON_REGEX = Regex("""\b\d{1,2}:\d{2}(?:\s*(?:hs|hrs|h|am|pm))?\b""")
+
+        // Palabras clave para descartar números que pertenecen a saldos, acumulados, reservas o historial
         private val DAILY_EARNINGS_KEYWORDS = listOf(
             "hoy", "today", "ganancias", "earnings", "saldo", "balance",
             "semana", "desconectar", "offline", "propina", "tip",
             "promocion", "promoción", "tarifa de cancelación", "cancelacion"
+        )
+
+        private val RESERVATION_KEYWORDS = listOf(
+            "reserva", "reservas", "solicitudes de reserva", "hora de recogida", "hora de salida",
+            "conéctate a las", "conectate a las", "reserva programada", "programado"
+        )
+
+        private val HISTORY_KEYWORDS = listOf(
+            "historial", "historial de viajes", "detalles del viaje", "resumen de actividad", "viajes anteriores", "ver detalles"
         )
 
         // Señales explícitas de cancelación por el pasajero o sistema (Español e Inglés)
@@ -398,6 +410,15 @@ class UberAccessibilityParser {
             return UberOfferScreenType.TRIP_CANCELLED
         }
 
+        val lowerContent = content.map { it.lowercase() }
+        if (lowerContent.any { text -> RESERVATION_KEYWORDS.any { text.contains(it) } }) {
+            return UberOfferScreenType.RESERVATION_SCREEN
+        }
+
+        if (lowerContent.any { text -> HISTORY_KEYWORDS.any { text.contains(it) } }) {
+            return UberOfferScreenType.HISTORY_SCREEN
+        }
+
         var hasTripOfferAction = false
         var hasRadarOfferAction = false
         var hasRadarPill = false
@@ -592,8 +613,11 @@ class UberAccessibilityParser {
                 val text = cleanText(raw)
                 val lower = text.lowercase()
 
-                // Exclusión secundaria por palabras clave de acumulados, saldos o propinas
-                if (DAILY_EARNINGS_KEYWORDS.any { lower.contains(it) }) {
+                // Exclusión de patrones de hora con dos puntos (18:30, 18:15) o palabras clave de acumulados, reservas o historial
+                if (TIME_COLON_REGEX.containsMatchIn(text) || text.contains(":") ||
+                    DAILY_EARNINGS_KEYWORDS.any { lower.contains(it) } ||
+                    RESERVATION_KEYWORDS.any { lower.contains(it) } ||
+                    HISTORY_KEYWORDS.any { lower.contains(it) }) {
                     continue
                 }
 
@@ -626,18 +650,22 @@ class UberAccessibilityParser {
                     }
                 }
 
-                // Patrón número aislado en tarjeta (ej. "5,02", "12,45", "5" con el símbolo € en nodo adyacente)
+                // Patrón número aislado en tarjeta (ej. "5,02", "12,45" con el símbolo € en nodo adyacente)
                 val numberMatch = Regex("""^\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*$""").find(text)
                 if (numberMatch != null) {
                     val amountStr = numberMatch.groupValues[1].replace(',', '.')
                     val amount = amountStr.toDoubleOrNull()
                     if (amount != null && amount >= 0.50 && amount <= 500.0) {
+                        val hasCurrencyInCard = allNodes.any { n ->
+                            val nt = n.text ?: n.contentDescription ?: ""
+                            nt.contains("€") || nt.contains("$") || nt.contains("EUR") || nt.contains("USD")
+                        }
                         val isRatingOrKinematics = allNodes.any { n ->
                             val nt = n.text ?: ""
                             (nt.contains("★") || nt.contains("*") || nt.contains("min") || nt.contains("km")) &&
                             nt.contains(text)
                         }
-                        if (!isRatingOrKinematics) {
+                        if (hasCurrencyInCard && !isRatingOrKinematics) {
                             return Pair(amount, "EUR")
                         }
                     }

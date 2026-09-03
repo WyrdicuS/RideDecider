@@ -46,6 +46,7 @@ class UberAccessibilityProcessor(
         private set
 
     private var lastSignature: String? = null
+    private var consumedOfferSignature: String? = null
     private var lastEvaluationTimestamp: Long = 0L
 
     // Throttling del diagnóstico ligero (150 ms)
@@ -81,7 +82,7 @@ class UberAccessibilityProcessor(
         metrics.eventsReceived.incrementAndGet()
 
         // 1. Filtrar por paquete
-        if (packageName == null || (!packageName.startsWith("com.ubercab") && !packageName.startsWith("com.android") && packageName != "android")) {
+        if (packageName == null || !packageName.startsWith("com.ubercab")) {
             return ProcessResult.IgnoredPackage(packageName?.toString())
         }
 
@@ -161,6 +162,13 @@ class UberAccessibilityProcessor(
             diagnosticLogger?.logEvent("SCREEN_TYPE_CHANGED", "from=$previousScreenType to=$currentScreenType")
             diagnosticLogger?.logEvent("TRIP_LIFECYCLE_TRANSITION", "from=$previousScreenType to=$currentScreenType | nodes=${snapshot.flatten().size}")
 
+            if (currentScreenType == UberOfferScreenType.NO_OFFER ||
+                currentScreenType == UberOfferScreenType.TRIP_CANCELLED ||
+                currentScreenType == UberOfferScreenType.TRIP_COMPLETED ||
+                currentScreenType == UberOfferScreenType.ACTIVE_TRIP) {
+                consumedOfferSignature = null
+            }
+
             if (currentScreenType == UberOfferScreenType.TRIP_CANCELLED) {
                 val reason = rawOffer.cancellationReason ?: com.ridedecider.app.domain.model.CancellationReason.UNKNOWN
                 evaluationListener?.onTripCancelled(reason, rawOffer.cancellationFee)
@@ -189,7 +197,7 @@ class UberAccessibilityProcessor(
         }
 
         val signature = generateOfferSignature(rawOffer)
-        if (signature == lastSignature && (currentTime - lastEvaluationTimestamp) < debounceIntervalMs) {
+        if (signature == consumedOfferSignature || (signature == lastSignature && (currentTime - lastEvaluationTimestamp) < debounceIntervalMs)) {
             metrics.debouncedCount.incrementAndGet()
             return ProcessResult.Debounced(signature)
         }
@@ -208,6 +216,7 @@ class UberAccessibilityProcessor(
         metrics.validOffersCount.incrementAndGet()
         metrics.evaluationsCount.incrementAndGet()
         lastSignature = signature
+        consumedOfferSignature = signature
         lastEvaluationTimestamp = currentTime
 
         val totalKm = evaluation.metrics?.totalDistanceKm?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "N/A"
@@ -243,7 +252,9 @@ class UberAccessibilityProcessor(
 
         if (rawOffer.detectedOfferType == UberOfferScreenType.TRIP_CANCELLED ||
             rawOffer.detectedOfferType == UberOfferScreenType.TRIP_COMPLETED ||
-            rawOffer.detectedOfferType == UberOfferScreenType.ACTIVE_TRIP) {
+            rawOffer.detectedOfferType == UberOfferScreenType.ACTIVE_TRIP ||
+            rawOffer.detectedOfferType == UberOfferScreenType.RESERVATION_SCREEN ||
+            rawOffer.detectedOfferType == UberOfferScreenType.HISTORY_SCREEN) {
             return false
         }
 
@@ -282,7 +293,7 @@ class UberAccessibilityProcessor(
         }
 
         val signature = generateOfferSignature(rawOffer)
-        if (signature == lastSignature && (currentTime - lastEvaluationTimestamp) < debounceIntervalMs) {
+        if (signature == consumedOfferSignature || (signature == lastSignature && (currentTime - lastEvaluationTimestamp) < debounceIntervalMs)) {
             metrics.debouncedCount.incrementAndGet()
             return ProcessResult.Debounced(signature)
         }
@@ -301,6 +312,7 @@ class UberAccessibilityProcessor(
         metrics.validOffersCount.incrementAndGet()
         metrics.evaluationsCount.incrementAndGet()
         lastSignature = signature
+        consumedOfferSignature = signature
         lastEvaluationTimestamp = currentTime
 
         val totalKm = evaluation.metrics?.totalDistanceKm?.let { String.format(Locale.US, "%.1f", it) } ?: "N/A"
@@ -316,7 +328,11 @@ class UberAccessibilityProcessor(
     }
 
     private fun generateOfferSignature(rawOffer: RawUberTripOffer): String {
-        return "${rawOffer.detectedOfferType?.name}_${rawOffer.rawFare}_${rawOffer.pickupDistanceKm}_${rawOffer.tripDistanceKm}_${rawOffer.tripDurationMinutes}"
+        val pickup = rawOffer.pickupAddress?.trim()?.lowercase() ?: ""
+        val dropoff = rawOffer.dropoffAddress?.trim()?.lowercase() ?: ""
+        val rating = rawOffer.passengerRating?.let { String.format(Locale.US, "%.2f", it) } ?: ""
+        val category = rawOffer.category?.trim()?.uppercase() ?: ""
+        return "${rawOffer.detectedOfferType?.name}_${rawOffer.rawFare}_${rawOffer.pickupDistanceKm}_${rawOffer.pickupDurationMinutes}_${rawOffer.tripDistanceKm}_${rawOffer.tripDurationMinutes}_${pickup}_${dropoff}_${rating}_${category}_${rawOffer.isCashPayment}"
     }
 
     /**
@@ -325,6 +341,7 @@ class UberAccessibilityProcessor(
     fun reset() {
         currentScreenType = UberOfferScreenType.UNKNOWN
         lastSignature = null
+        consumedOfferSignature = null
         lastEvaluationTimestamp = 0L
         lastDiagnosticTimestamp = -diagnosticThrottleIntervalMs
         lastFullDumpTimestamp = -fullDumpCooldownMs
