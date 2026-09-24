@@ -366,74 +366,12 @@ fun SettingsScreen(
         }
 
         // 5. Sección: Actualizaciones del Sistema
+        // Nota (R6.3): el UpdateAvailableDialog y el AlertDialog de permiso se elevaron a
+        // MainActivity para que aparezcan automaticamente al iniciar la app en cualquier
+        // pestaña. Aqui solo se conserva el resumen textual y el boton de comprobacion manual.
+        // AppUpdateManager es singleton via ServiceLocator: comparte StateFlow con MainActivity.
         val appUpdateManager = remember { ServiceLocator.getAppUpdateManager(context) }
         val updateState by appUpdateManager.updateState.collectAsState()
-        var showPermissionDialog by remember { mutableStateOf(false) }
-
-        if (updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Available ||
-            updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Downloading ||
-            updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Downloaded ||
-            updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Installing ||
-            updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Error
-        ) {
-            com.ridedecider.app.ui.components.UpdateAvailableDialog(
-                state = updateState,
-                onStartDownload = { appUpdateManager.startDownload() },
-                onCancelDownload = { appUpdateManager.cancelDownload() },
-                onInstallApk = { actContext ->
-                    if (appUpdateManager.canRequestPackageInstalls(actContext)) {
-                        appUpdateManager.installApk(actContext)
-                    } else {
-                        showPermissionDialog = true
-                    }
-                },
-                onRequestPermission = { actContext ->
-                    actContext.startActivity(appUpdateManager.getManageUnknownAppSourcesIntent(actContext))
-                },
-                onRetry = { appUpdateManager.checkForUpdates() },
-                onDismiss = { appUpdateManager.resetState() }
-            )
-        }
-
-        if (showPermissionDialog) {
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { showPermissionDialog = false },
-                containerColor = RdSurface,
-                title = {
-                    Text(
-                        text = "Permiso de Instalación Necesario",
-                        color = RdTextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                text = {
-                    Text(
-                        text = "Android requiere que autorices a RideDecider para instalar actualizaciones descargadas fuera de Google Play Store.",
-                        color = RdTextSecondary,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showPermissionDialog = false
-                            context.startActivity(appUpdateManager.getManageUnknownAppSourcesIntent(context))
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = RdBrandPrimary),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Permitir Instalación", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showPermissionDialog = false }) {
-                        Text("Cancelar", color = RdTextTertiary, fontSize = 12.sp)
-                    }
-                }
-            )
-        }
 
         Card(
             modifier = Modifier

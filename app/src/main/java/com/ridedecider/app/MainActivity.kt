@@ -77,6 +77,20 @@ class MainActivity : ComponentActivity() {
                 val accessibilityStatus by serviceTracker.status.collectAsState()
                 var currentTab by remember { mutableStateOf(AppTab.HOME) }
 
+                // R6.3: comprobacion automatica de actualizaciones al iniciar la app y
+                // presentacion global del dialogo (aparece en cualquier pestaña, no solo Ajustes).
+                // AppUpdateManager es singleton via ServiceLocator: SettingsScreen comparte estado.
+                val appUpdateManager = remember { ServiceLocator.getAppUpdateManager(context) }
+                val updateState by appUpdateManager.updateState.collectAsState()
+                var showInstallPermissionDialog by remember { mutableStateOf(false) }
+
+                LaunchedEffect(Unit) {
+                    // Solo dispara la comprobacion si aun no se ha ejecutado en esta sesion.
+                    if (updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Idle) {
+                        appUpdateManager.checkForUpdates()
+                    }
+                }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = RdBackground,
@@ -121,6 +135,83 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                }
+
+                // Dialogo global de actualizacion: se muestra en TODAS las pantallas si
+                // AppUpdateManager reporta un estado accionable (Available/Downloading/
+                // Downloaded/Installing/Error). Dismiss => resetState (Idle), y no vuelve
+                // a aparecer hasta el proximo checkForUpdates (manual en Ajustes o reinicio).
+                if (updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Available ||
+                    updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Downloading ||
+                    updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Downloaded ||
+                    updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Installing ||
+                    updateState is com.ridedecider.app.domain.model.update.AppUpdateState.Error
+                ) {
+                    com.ridedecider.app.ui.components.UpdateAvailableDialog(
+                        state = updateState,
+                        onStartDownload = { appUpdateManager.startDownload() },
+                        onCancelDownload = { appUpdateManager.cancelDownload() },
+                        onInstallApk = { actContext ->
+                            if (appUpdateManager.canRequestPackageInstalls(actContext)) {
+                                appUpdateManager.installApk(actContext)
+                            } else {
+                                showInstallPermissionDialog = true
+                            }
+                        },
+                        onRequestPermission = { actContext ->
+                            actContext.startActivity(appUpdateManager.getManageUnknownAppSourcesIntent(actContext))
+                        },
+                        onRetry = { appUpdateManager.checkForUpdates() },
+                        onDismiss = { appUpdateManager.resetState() }
+                    )
+                }
+
+                if (showInstallPermissionDialog) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showInstallPermissionDialog = false },
+                        containerColor = com.ridedecider.app.ui.theme.RdSurface,
+                        title = {
+                            Text(
+                                text = "Permiso de Instalación Necesario",
+                                color = com.ridedecider.app.ui.theme.RdTextPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        text = {
+                            Text(
+                                text = "Android requiere que autorices a RideDecider para instalar actualizaciones descargadas fuera de Google Play Store.",
+                                color = com.ridedecider.app.ui.theme.RdTextSecondary,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showInstallPermissionDialog = false
+                                    context.startActivity(appUpdateManager.getManageUnknownAppSourcesIntent(context))
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = com.ridedecider.app.ui.theme.RdBrandPrimary
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Permitir Instalación", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = { showInstallPermissionDialog = false }
+                            ) {
+                                Text(
+                                    "Cancelar",
+                                    color = com.ridedecider.app.ui.theme.RdTextTertiary,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    )
                 }
             }
         }
