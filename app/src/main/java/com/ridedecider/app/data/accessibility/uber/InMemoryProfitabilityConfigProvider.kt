@@ -10,7 +10,7 @@ class InMemoryProfitabilityConfigProvider(
     private var config: ProfitabilityConfig = ProfitabilityConfig(
         costPerKm = 0.20,
         costPerHour = 4.0,
-        minGrossHourlyRate = 24.0, // Objetivo: 120 € en 5 horas = 24.00 €/h
+        minGrossHourlyRate = 24.0, // R6.7: umbral economico configurable del motor. NO deriva de Goals ni del ritmo objetivo personal. Post-R4.10 el motor esta desacoplado de DriverGoals.
         minGrossPerKmRate = 1.10,
         minNetTripProfit = 2.0,
         minNetHourlyRate = 18.0,

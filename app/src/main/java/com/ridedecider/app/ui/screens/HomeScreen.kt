@@ -62,7 +62,6 @@ import com.ridedecider.app.ui.theme.RdStatusAhead
 import com.ridedecider.app.ui.theme.RdStatusWarning
 import com.ridedecider.app.ui.theme.RdTextTertiary
 import com.ridedecider.app.ui.theme.RdBrandPrimary
-import com.ridedecider.app.ui.theme.RdBrandPrimaryLight
 import com.ridedecider.app.ui.theme.RdStatusAhead
 import com.ridedecider.app.ui.theme.RdStatusBehind
 import com.ridedecider.app.ui.theme.RdSurface
@@ -224,25 +223,29 @@ fun HomeScreen(
                 AccessibilityServiceStatus.DISABLED -> Triple(if (isAccessibilityEnabled) "ACTIVO" else "INACTIVO", isAccessibilityEnabled, false)
             }
 
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                StatusIndicator(
-                    label = statusLabel,
-                    isActive = isStatusActive,
-                    isWarning = isStatusWarning
-                )
-                DecisionModeChip(mode = currentDecisionMode)
-            }
+            StatusIndicator(
+                label = statusLabel,
+                isActive = isStatusActive,
+                isWarning = isStatusWarning
+            )
         }
 
-        // 2. Tarjeta Principal: Objetivo de Hoy (Métricas Reales)
-        GoalProgressCard(
-            title = "Objetivo de Hoy",
-            progress = dailyProgress,
-            isHero = true
-        )
+        // 2. Tarjeta Principal: bloque principal segun DecisionMode.
+        // R6.5: en MANUAL se muestra "Objetivo de Hoy" con el progreso real; en AUTOMATIC
+        // se muestra el estado del modo automatico, sin presentar el objetivo personal como
+        // criterio del motor (R4.10 separo Goals de la evaluacion intrinseca).
+        when (currentDecisionMode) {
+            com.ridedecider.app.domain.model.DecisionMode.MANUAL -> {
+                GoalProgressCard(
+                    title = "Objetivo de Hoy",
+                    progress = dailyProgress,
+                    isHero = true
+                )
+            }
+            com.ridedecider.app.domain.model.DecisionMode.AUTOMATIC -> {
+                AutomaticModeCard()
+            }
+        }
 
         // 3. Sección: Última Recomendación
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -312,12 +315,21 @@ fun HomeScreen(
                     "--"
                 }
 
+                // R6.4: el color destaca cuando el ritmo actual iguala o supera el ritmo
+                // objetivo personal derivado del propio dailyProgress (targetEur/plannedHours),
+                // no un literal 25.0. Si aun no hay objetivo con plannedHours>0, no se destaca.
+                val goalHourlyTarget = dailyProgress?.let { p ->
+                    if (p.plannedHours > 0.0) p.targetEur / p.plannedHours else null
+                }
+                val meetsGoalPace = goalHourlyTarget != null &&
+                    workedHours > 0.05 &&
+                    currentRate >= goalHourlyTarget
                 MetricCard(
                     label = "Ritmo Económico",
                     value = hourlyRateFormatted,
                     unit = "€/h",
                     modifier = Modifier.weight(1f),
-                    valueColor = if (currentRate >= 25.0) RdBrandPrimary else RdTextPrimary,
+                    valueColor = if (meetsGoalPace) RdBrandPrimary else RdTextPrimary,
                     subValue = if (workedHours > 0.05) "En tiempo activo" else "Sin actividad"
                 )
 
@@ -503,32 +515,42 @@ fun HomeScreen(
 }
 
 /**
- * R6.2: chip compacto que refleja el [com.ridedecider.app.domain.model.DecisionMode] activo.
- * Solo presentacion: no realiza persistencia, no genera evaluaciones, no consulta Goals.
- * Diferenciacion visual con tokens existentes de la paleta:
- *   AUTOMATIC → fondo/borde de marca (RdBrandPrimary) + texto RdBrandPrimaryLight
- *   MANUAL    → fondo/borde neutros (RdSurfaceInteractive/RdBorderSubtle) + texto RdTextSecondary
+ * R6.5: bloque principal de Inicio en modo AUTOMATIC. Ocupa el mismo hueco visual que
+ * [GoalProgressCard] en MANUAL, con la misma Card / radius / border / superficie, pero
+ * comunica el estado del modo automatico sin presentar el objetivo personal como
+ * criterio del motor. No consume Goals ni GoalContext.
  */
 @Composable
-private fun DecisionModeChip(mode: com.ridedecider.app.domain.model.DecisionMode) {
-    val isAutomatic = mode == com.ridedecider.app.domain.model.DecisionMode.AUTOMATIC
-    val label = if (isAutomatic) "MODO AUTOMÁTICO" else "MODO MANUAL"
-    val background = if (isAutomatic) RdBrandPrimary.copy(alpha = 0.16f) else RdSurfaceInteractive
-    val borderColor = if (isAutomatic) RdBrandPrimary.copy(alpha = 0.5f) else RdBorderSubtle
-    val textColor = if (isAutomatic) RdBrandPrimaryLight else RdTextSecondary
-
-    Box(
-        modifier = Modifier
-            .background(background, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-            .border(1.dp, borderColor, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-            .padding(horizontal = 7.dp, vertical = 2.5.dp)
+private fun AutomaticModeCard(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.5.dp,
+                color = RdBrandPrimary.copy(alpha = 0.5f),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+            ),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = RdSurface)
     ) {
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = 0.5.sp
-        )
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "MODO AUTOMÁTICO",
+                color = RdTextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = "Las ofertas se evalúan automáticamente según los criterios económicos configurados. Tus objetivos personales no intervienen en esta evaluación.",
+                color = RdTextSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
     }
 }

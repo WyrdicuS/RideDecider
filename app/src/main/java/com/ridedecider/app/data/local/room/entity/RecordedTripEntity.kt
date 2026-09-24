@@ -79,6 +79,13 @@ data class RecordedTripEntity(
                 try { DecisionReason.valueOf(it.trim()) } catch (e: Exception) { null }
             }
 
+        // R6.7: PLACEHOLDER. La ProfitabilityConfig usada en la evaluacion original NO se
+        // persiste en el schema Room actual (no existen columnas para minGrossHourlyRate,
+        // costPerKm, etc.). Estos valores se rellenan al reconstruir el TripEvaluation
+        // desde la entidad, y NO representan un snapshot historico real de la config del
+        // motor. No coinciden intencionadamente con el umbral vivo del motor
+        // (InMemoryProfitabilityConfigProvider) para dejar claro que son placeholders.
+        // No modificar sin haber persistido antes las columnas correspondientes.
         val domainEvaluation = TripEvaluation(
             trip = domainTrip,
             configUsed = ProfitabilityConfig(

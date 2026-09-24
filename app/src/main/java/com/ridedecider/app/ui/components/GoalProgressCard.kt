@@ -41,6 +41,14 @@ import com.ridedecider.app.ui.theme.RdTextSecondary
 import com.ridedecider.app.ui.theme.RdTextTertiary
 import java.util.Locale
 
+/**
+ * R6.4: umbral visual de alerta para "Ritmo necesario". Cuando el ritmo requerido
+ * para alcanzar el objetivo supera este valor, el texto se pinta en color de alerta.
+ * Es un criterio visual fijo del producto — no procede de ProfitabilityConfig ni de
+ * Goals — y no participa en ninguna decision economica del motor.
+ */
+private const val REQUIRED_RATE_WARNING_THRESHOLD_EUR_PER_HOUR = 35.0
+
 @Composable
 fun GoalProgressCard(
     title: String,
@@ -257,7 +265,7 @@ fun GoalProgressCard(
                         }
                         Text(
                             text = requiredRateText,
-                            color = if (progress.requiredHourlyRate > 35.0) RdStatusBehind else RdBrandPrimaryLight,
+                            color = if (progress.requiredHourlyRate > REQUIRED_RATE_WARNING_THRESHOLD_EUR_PER_HOUR) RdStatusBehind else RdBrandPrimaryLight,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )

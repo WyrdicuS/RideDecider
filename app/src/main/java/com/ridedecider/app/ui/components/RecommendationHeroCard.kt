@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ridedecider.app.domain.model.DecisionMode
 import com.ridedecider.app.domain.model.TripOfferType
 import com.ridedecider.app.ui.overlay.model.HudUiModel
 import com.ridedecider.app.ui.overlay.model.HudVisualTier
@@ -169,6 +170,38 @@ fun RecommendationHeroCard(
                 }
             }
 
+            // R6.3: en AUTOMATIC, mostrar la semantica automatica (recommendation / quality /
+            // confidence) entre los badges superiores y la tarifa. En MANUAL este bloque
+            // no se pinta y la tarjeta preserva su composicion previa.
+            if (evaluation.decisionMode == DecisionMode.AUTOMATIC && evaluation.recommendationText != null) {
+                Spacer(modifier = Modifier.height(if (isLiveMode) 10.dp else 8.dp))
+                Text(
+                    text = evaluation.recommendationText,
+                    color = tierColor,
+                    fontSize = if (isLiveMode) 15.sp else 13.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.6.sp
+                )
+                // Sub-linea compacta con Calidad y Confianza si el mapper las proporciono.
+                // qualityText es null cuando el assessment es null (fallback conservador):
+                // en ese caso no se pinta nada, sin fabricar valores.
+                val qualityText = evaluation.qualityText
+                val confidenceText = evaluation.confidenceText
+                if (qualityText != null || confidenceText != null) {
+                    val parts = listOfNotNull(
+                        qualityText?.let { "Calidad $it" },
+                        confidenceText
+                    )
+                    Text(
+                        text = parts.joinToString("   ·   "),
+                        color = RdTextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.3.sp
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(if (isLiveMode) 14.dp else 10.dp))
 
             // Tarifa Prominente
@@ -247,6 +280,22 @@ fun RecommendationHeroCard(
                         )
                     }
                 }
+            }
+
+            // R6.3: pie compacto de override (solo AUTOMATIC + speOverridden). Muestra el
+            // texto que ya viene del OpportunityEvaluator; la UI no lo interpreta.
+            if (evaluation.decisionMode == DecisionMode.AUTOMATIC &&
+                evaluation.isOverride &&
+                evaluation.overrideText != null
+            ) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = evaluation.overrideText,
+                    color = RdTextSecondary,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    lineHeight = 14.sp
+                )
             }
         }
     }

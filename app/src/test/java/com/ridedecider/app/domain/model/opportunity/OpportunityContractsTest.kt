@@ -2,6 +2,7 @@ package com.ridedecider.app.domain.model.opportunity
 
 import com.ridedecider.app.data.accessibility.uber.KinematicsSource
 import com.ridedecider.app.domain.model.Decision
+import com.ridedecider.app.domain.model.DecisionMode
 import com.ridedecider.app.domain.model.DecisionReason
 import com.ridedecider.app.domain.model.Trip
 import com.ridedecider.app.domain.model.TripEvaluation

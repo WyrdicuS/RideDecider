@@ -197,16 +197,21 @@ class UberAccessibilityService : AccessibilityService() {
             }
         }
 
-        try {
-            val filter = android.content.IntentFilter("com.ridedecider.app.TEST_HUD")
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(testReceiver, filter, android.content.Context.RECEIVER_EXPORTED)
-            } else {
-                registerReceiver(testReceiver, filter)
+        // R6.7: TEST_HUD receiver disponible SOLO en builds debug (validacion de HUD via
+        // adb broadcast). En release no se registra: la superficie de prueba no queda
+        // expuesta a la app instalada por los usuarios.
+        if (com.ridedecider.app.BuildConfig.DEBUG) {
+            try {
+                val filter = android.content.IntentFilter("com.ridedecider.app.TEST_HUD")
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    registerReceiver(testReceiver, filter, android.content.Context.RECEIVER_EXPORTED)
+                } else {
+                    registerReceiver(testReceiver, filter)
+                }
+                Log.i(TAG, "[SERVICE_CONNECTED] BroadcastReceiver TEST_HUD registrado (debug build).")
+            } catch (e: Exception) {
+                Log.w(TAG, "Error registrando testReceiver: ${e.message}")
             }
-            Log.i(TAG, "[SERVICE_CONNECTED] BroadcastReceiver TEST_HUD registrado.")
-        } catch (e: Exception) {
-            Log.w(TAG, "Error registrando testReceiver: ${e.message}")
         }
 
         val hudEvaluationListener = object : TripEvaluationListener {
@@ -548,9 +553,13 @@ class UberAccessibilityService : AccessibilityService() {
         super.onDestroy()
         Log.i(TAG, "[SERVICE_DESTROYED] Servicio de accesibilidad destruido.")
         ServiceLocator.getAccessibilityServiceStateTracker(this).onDestroyed(this)
-        try {
-            unregisterReceiver(testReceiver)
-        } catch (_: Exception) {}
+        // R6.7: solo se registra en debug (ver onServiceConnected); en release no hay
+        // nada que desregistrar. Se envuelve en try/catch por si el registro fallo.
+        if (com.ridedecider.app.BuildConfig.DEBUG) {
+            try {
+                unregisterReceiver(testReceiver)
+            } catch (_: Exception) {}
+        }
         hudOverlayManager?.destroy()
         hudOverlayManager = null
         HudStateHolder.hide()

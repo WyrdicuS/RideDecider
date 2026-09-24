@@ -27,6 +27,15 @@ data class DriverGoals(
             GoalPeriod.MONTHLY -> monthlyPlannedHours
         }
 
+    // R6.7: DEUDA TECNICA. El fallback `24.0` cuando plannedHours <= 0.0 no representa
+    // el objetivo personal (que en ese caso es indeterminado) ni el umbral economico del
+    // motor (ese vive en ProfitabilityConfig y es independiente de Goals). Coincide
+    // numericamente con InMemoryProfitabilityConfigProvider.minGrossHourlyRate por
+    // casualidad. Consumidores actuales: log de diagnostico en UberAccessibilityService
+    // ("[GOALS_SYNCED]") — inofensivo. Cambiar a `Double?` requeriria propagar
+    // opcionalidad por toda la cadena de Goals y queda fuera del alcance R6.7.
+    // Regla: los consumidores deben validar `activePlannedHours > 0.0` antes de usar
+    // este getter como ritmo objetivo real.
     val activeHourlyTarget: Double
         get() = if (activePlannedHours > 0.0) activeTargetEur / activePlannedHours else 24.0
 
