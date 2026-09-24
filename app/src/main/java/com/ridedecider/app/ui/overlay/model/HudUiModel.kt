@@ -1,6 +1,7 @@
 package com.ridedecider.app.ui.overlay.model
 
 import com.ridedecider.app.domain.model.Decision
+import com.ridedecider.app.domain.model.DecisionMode
 import com.ridedecider.app.domain.model.TripOfferType
 
 /**
@@ -28,5 +29,15 @@ data class HudUiModel(
     val tripSummaryText: String = "",
     val mainReasonText: String? = null,
     val reasons: List<String> = emptyList(),
-    val passengerRating: String? = null
+    val passengerRating: String? = null,
+    val goalPaceText: String? = null,
+    val goalContributionText: String? = null,
+    val goalStatusText: String? = null,
+    // Campos de modo AUTOMATIC (R5) — derivados de OpportunityAssessment, ausentes en MANUAL
+    val decisionMode: DecisionMode = DecisionMode.MANUAL,
+    val recommendationText: String? = null,
+    val qualityText: String? = null,
+    val confidenceText: String? = null,
+    val isOverride: Boolean = false,
+    val overrideText: String? = null
 )

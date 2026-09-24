@@ -1,6 +1,8 @@
 package com.ridedecider.app.ui.overlay.state
 
+import com.ridedecider.app.domain.model.DecisionMode
 import com.ridedecider.app.domain.model.TripEvaluation
+import com.ridedecider.app.domain.model.opportunity.OpportunityAssessment
 import com.ridedecider.app.ui.overlay.mapper.HudUiModelMapper
 import com.ridedecider.app.ui.overlay.model.HudState
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +17,11 @@ import kotlinx.coroutines.launch
 /**
  * Fuente única de verdad para el estado reactivo del HUD flotante.
  * Totalmente en memoria, sin operaciones de E/S ni bloqueo de hilos.
+ *
+ * [currentMode] es una copia derivada del [DecisionMode] activo, mantenida sincronizada
+ * mediante [setDecisionMode] (llamado por quien observa la unica fuente de verdad persistida,
+ * [com.ridedecider.app.data.preferences.DecisionModeRepository]). Este holder nunca persiste
+ * ni decide el modo por si mismo.
  */
 object HudStateHolder {
 
@@ -24,13 +31,35 @@ object HudStateHolder {
     private val scope = CoroutineScope(Dispatchers.Main)
     private var delayedHideJob: Job? = null
 
+    @Volatile
+    private var currentMode: DecisionMode = DecisionMode.MANUAL
+
+    private var lastEvaluation: TripEvaluation? = null
+    private var lastAssessment: OpportunityAssessment? = null
+
     /**
-     * Publica una nueva evaluación de viaje en el HUD.
+     * Actualiza el modo de decision activo. Si el HUD esta visible, re-renderiza
+     * inmediatamente la ultima evaluacion con el nuevo modo (sin re-evaluar economia).
      */
-    fun emitEvaluation(evaluation: TripEvaluation) {
+    fun setDecisionMode(mode: DecisionMode) {
+        currentMode = mode
+        val evaluation = lastEvaluation
+        if (evaluation != null && _state.value is HudState.Visible) {
+            val uiModel = HudUiModelMapper.map(evaluation, lastAssessment, currentMode)
+            _state.value = HudState.Visible(uiModel)
+        }
+    }
+
+    /**
+     * Publica una nueva evaluación de viaje en el HUD, opcionalmente enriquecida con
+     * [OpportunityAssessment] para el modo AUTOMATIC.
+     */
+    fun emitEvaluation(evaluation: TripEvaluation, assessment: OpportunityAssessment? = null) {
         delayedHideJob?.cancel()
         delayedHideJob = null
-        val uiModel = HudUiModelMapper.map(evaluation)
+        lastEvaluation = evaluation
+        lastAssessment = assessment
+        val uiModel = HudUiModelMapper.map(evaluation, assessment, currentMode)
         _state.value = HudState.Visible(uiModel)
     }
 

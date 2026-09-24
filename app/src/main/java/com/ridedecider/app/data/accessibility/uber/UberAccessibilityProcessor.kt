@@ -8,7 +8,11 @@ import com.ridedecider.app.data.accessibility.uber.diagnostic.UberOfferLightDiag
 import com.ridedecider.app.data.accessibility.uber.diagnostic.UberTreeDumper
 import com.ridedecider.app.data.accessibility.uber.ocr.OcrResult
 import com.ridedecider.app.domain.engine.DecisionEngine
+import com.ridedecider.app.domain.engine.DefaultOpportunityEvaluator
+import com.ridedecider.app.domain.engine.OpportunityEvaluator
+import com.ridedecider.app.domain.model.DriverEconomicContext
 import com.ridedecider.app.domain.model.TripEvaluation
+import com.ridedecider.app.domain.model.opportunity.OpportunityAssessment
 import com.ridedecider.app.domain.repository.ProfitabilityConfigProvider
 import com.ridedecider.app.domain.usecase.EvaluateIncomingTripUseCase
 import java.util.Locale
@@ -32,7 +36,9 @@ class UberAccessibilityProcessor(
     private val validator: UberOfferValidator = UberOfferValidator(),
     private val mapper: RawUberTripOfferMapper = RawUberTripOfferMapper(),
     private val evaluateUseCase: EvaluateIncomingTripUseCase = EvaluateIncomingTripUseCase(DecisionEngine()),
+    private val opportunityEvaluator: OpportunityEvaluator = DefaultOpportunityEvaluator(),
     private val configProvider: ProfitabilityConfigProvider = InMemoryProfitabilityConfigProvider(),
+    private val economicContextProvider: () -> DriverEconomicContext? = { null },
     var evaluationListener: TripEvaluationListener? = null,
     private val debounceIntervalMs: Long = UberAccessibilityConstants.DEFAULT_DEBOUNCE_INTERVAL_MS,
     var diagnosticLogger: AccessibilityDiagnosticLogger? = null,
@@ -211,7 +217,13 @@ class UberAccessibilityProcessor(
 
         val trip = (mappingResult as TripMappingResult.Success).trip
         val config = configProvider.getConfig()
-        val evaluation = evaluateUseCase(trip, config)
+        val evaluation = evaluateUseCase(trip, config, economicContext = economicContextProvider())
+        val opportunityAssessment = opportunityEvaluator.evaluate(
+            evaluation = evaluation,
+            trip = trip,
+            historicalContext = null,
+            kinematicsSource = rawOffer.kinematicsSource
+        )
 
         metrics.validOffersCount.incrementAndGet()
         metrics.evaluationsCount.incrementAndGet()
@@ -231,8 +243,9 @@ class UberAccessibilityProcessor(
         )
 
         evaluationListener?.onTripEvaluation(evaluation)
+        evaluationListener?.onOpportunityAssessment(opportunityAssessment)
 
-        return ProcessResult.Evaluated(evaluation)
+        return ProcessResult.Evaluated(evaluation, opportunityAssessment)
     }
 
     fun shouldTriggerOcrFallback(
@@ -307,7 +320,13 @@ class UberAccessibilityProcessor(
 
         val trip = (mappingResult as TripMappingResult.Success).trip
         val config = configProvider.getConfig()
-        val evaluation = evaluateUseCase(trip, config)
+        val evaluation = evaluateUseCase(trip, config, economicContext = economicContextProvider())
+        val opportunityAssessment = opportunityEvaluator.evaluate(
+            evaluation = evaluation,
+            trip = trip,
+            historicalContext = null,
+            kinematicsSource = rawOffer.kinematicsSource
+        )
 
         metrics.validOffersCount.incrementAndGet()
         metrics.evaluationsCount.incrementAndGet()
@@ -323,8 +342,9 @@ class UberAccessibilityProcessor(
         )
 
         evaluationListener?.onTripEvaluation(evaluation)
+        evaluationListener?.onOpportunityAssessment(opportunityAssessment)
 
-        return ProcessResult.Evaluated(evaluation)
+        return ProcessResult.Evaluated(evaluation, opportunityAssessment)
     }
 
     private fun generateOfferSignature(rawOffer: RawUberTripOffer): String {
@@ -361,6 +381,9 @@ class UberAccessibilityProcessor(
         data class RequiresOcrFallback(val rawOffer: RawUberTripOffer, val nodeCount: Int, val isStructuralJump: Boolean) : ProcessResult()
         data class Debounced(val signature: String) : ProcessResult()
         data class MappingFailure(val reason: TripMappingFailureReason) : ProcessResult()
-        data class Evaluated(val evaluation: TripEvaluation) : ProcessResult()
+        data class Evaluated(
+            val evaluation: TripEvaluation,
+            val opportunityAssessment: OpportunityAssessment
+        ) : ProcessResult()
     }
 }

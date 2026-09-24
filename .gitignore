@@ -31,3 +31,5 @@ Thumbs.db
 scratch/
 *.py
 *.js
+# Local validation artifacts (screenshots, ADB dumps)
+.artifacts/

@@ -188,9 +188,26 @@ class DecisionEngine(
             metrics = metrics,
             config = config,
             decision = decision,
-            pickupDistanceKm = pickupDistanceKm,
-            economicContext = economicContext
+            pickupDistanceKm = pickupDistanceKm
         )
+
+        val goalContext = if (economicContext != null) {
+            val activeProgress = when (economicContext.dailyProgress.targetEur > 0.0) {
+                true -> economicContext.dailyProgress
+                false -> when {
+                    economicContext.weeklyProgress.targetEur > 0.0 -> economicContext.weeklyProgress
+                    economicContext.monthlyProgress.targetEur > 0.0 -> economicContext.monthlyProgress
+                    else -> null
+                }
+            }
+            if (activeProgress != null) {
+                GoalContextEvaluator.evaluate(metrics, activeProgress, rawFare)
+            } else {
+                null
+            }
+        } else {
+            null
+        }
 
         return TripEvaluation(
             trip = trip,
@@ -199,7 +216,8 @@ class DecisionEngine(
             decision = decision,
             reasons = reasons,
             evaluationTimestamp = evaluationTimestamp,
-            profitabilityLevel = profitabilityLevel
+            profitabilityLevel = profitabilityLevel,
+            goalContext = goalContext
         )
     }
 

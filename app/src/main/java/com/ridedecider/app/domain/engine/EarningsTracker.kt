@@ -23,6 +23,16 @@ class EarningsTracker(
     private val earningsRepository: EarningsRepository
 ) {
 
+    @Volatile
+    private var cachedEconomicContext: DriverEconomicContext? = null
+
+    val cachedContext: DriverEconomicContext?
+        get() = cachedEconomicContext
+
+    suspend fun refreshEconomicContext(timestamp: Long = System.currentTimeMillis()) {
+        cachedEconomicContext = getEconomicContext(timestamp)
+    }
+
     val stateMachine = TripLifecycleStateMachine()
 
     val currentTripId: String?
@@ -175,6 +185,7 @@ class EarningsTracker(
             actualDur = durationMinutes,
             finalEarnings = finalEarnings
         )
+        refreshEconomicContext(completedTimestamp)
     }
 
     /**
@@ -211,6 +222,7 @@ class EarningsTracker(
                 tripId = tripId,
                 cancellationFee = cancellationFee
             )
+            refreshEconomicContext(timestamp)
         }
     }
 

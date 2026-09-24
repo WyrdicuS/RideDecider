@@ -1,6 +1,7 @@
 package com.ridedecider.app.data.accessibility.uber
 
 import com.ridedecider.app.domain.model.TripEvaluation
+import com.ridedecider.app.domain.model.opportunity.OpportunityAssessment
 
 /**
  * Listener abstracto para recibir los resultados de evaluación y cambios de estado de pantalla emitidos
@@ -12,6 +13,12 @@ interface TripEvaluationListener {
      * Notificado cuando una oferta válida ha sido completamente analizada por el [com.ridedecider.app.domain.engine.DecisionEngine].
      */
     fun onTripEvaluation(evaluation: TripEvaluation)
+
+    /**
+     * Notificado cuando el [com.ridedecider.app.domain.engine.OpportunityEvaluator] ha interpretado
+     * el [TripEvaluation] emitido por el SPE en el mismo ciclo de evaluación.
+     */
+    fun onOpportunityAssessment(assessment: OpportunityAssessment) {}
 
     /**
      * Notificado cuando cambia la clasificación de la pantalla de Uber detectada.

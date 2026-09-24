@@ -1,32 +1,42 @@
 package com.ridedecider.app.ui.overlay.mapper
 
 import com.ridedecider.app.domain.model.Decision
+import com.ridedecider.app.domain.model.DecisionMode
 import com.ridedecider.app.domain.model.DecisionReason
+import com.ridedecider.app.domain.model.GoalContextMetrics
+import com.ridedecider.app.domain.model.ProgressStatus
 import com.ridedecider.app.domain.model.TripEvaluation
 import com.ridedecider.app.domain.model.TripOfferType
+import com.ridedecider.app.domain.model.opportunity.Confidence
+import com.ridedecider.app.domain.model.opportunity.OpportunityAssessment
+import com.ridedecider.app.domain.model.opportunity.OpportunityQuality
+import com.ridedecider.app.domain.model.opportunity.Recommendation
 import com.ridedecider.app.ui.overlay.model.HudUiModel
 import com.ridedecider.app.ui.overlay.model.HudVisualTier
 import java.util.Locale
 
 /**
- * Mapper puro para transformar entidades [TripEvaluation] en [HudUiModel]
- * aplicando formato específico para España (coma decimal, símbolo de divisa al final)
- * y clasificación en 4 niveles visuales según rentabilidad:
+ * Mapper puro para transformar [TripEvaluation] (+ opcionalmente [OpportunityAssessment])
+ * en [HudUiModel] segun el [DecisionMode] activo.
  *
- * ◆ EXCELENTE (Púrpura)     -> Rentabilidad muy alta (>30% por encima de objetivos/umbrales)
- * ★ BUENO (Verde claro)     -> Cumple holgadamente todos los criterios del DecisionEngine (ACCEPT)
- * ○ ACEPTABLE (Naranja claro) -> Cumple los criterios básicos mínimos
- * ✕ MALO (Rojo oscuro)      -> Rechazado por rentabilidad insuficiente o inviable (REJECT / UNKNOWN)
+ * MANUAL: profitabilityLevel/HudVisualTier es la semantica primaria (comportamiento previo a R5,
+ * sin cambios). GoalContext se muestra como contexto separado. OpportunityAssessment es
+ * enriquecimiento opcional, nunca reemplaza profitabilityLevel.
+ *
+ * AUTOMATIC: OpportunityAssessment (Recommendation/Quality/Confidence) es la semantica primaria.
+ * GoalContext nunca se consulta ni se muestra en este modo.
  */
 object HudUiModelMapper {
 
     private val SPANISH_LOCALE = Locale.forLanguageTag("es-ES")
 
-    fun map(evaluation: TripEvaluation): HudUiModel {
+    fun map(
+        evaluation: TripEvaluation,
+        assessment: OpportunityAssessment? = null,
+        mode: DecisionMode = DecisionMode.MANUAL
+    ): HudUiModel {
         val trip = evaluation.trip
         val metrics = evaluation.metrics
-
-        val tier = determineVisualTier(evaluation)
 
         val fareText = trip.rawFare?.let { formatCurrency(it, trip.currency) } ?: "N/A"
         val grossPerKmText = metrics?.grossPerKm?.let { "${formatDecimal(it)} €/km" } ?: "N/A"
@@ -68,24 +78,185 @@ object HudUiModelMapper {
 
         val passengerRatingText = trip.passengerRating?.let { formatDecimal(it) }
 
-        return HudUiModel(
-            tier = tier,
-            decision = evaluation.decision,
-            decisionText = tier.label,
+        val shared = SharedFields(
             fareText = fareText,
             grossPerKmText = grossPerKmText,
             grossPerHourText = grossPerHourText,
             totalDistanceText = totalDistanceText,
             totalDurationText = totalDurationText,
-            pickupSummaryText = pickupSummary,
-            tripSummaryText = tripSummary,
+            pickupSummary = pickupSummary,
+            tripSummary = tripSummary,
+            formattedReasons = formattedReasons,
             mainReasonText = mainReasonText,
-            reasons = formattedReasons,
-            offerType = trip.offerType,
             offerTypeText = offerTypeText,
-            isCashPayment = trip.isCashPayment,
-            passengerRating = passengerRatingText
+            passengerRatingText = passengerRatingText
         )
+
+        return when (mode) {
+            DecisionMode.MANUAL -> buildManualModel(evaluation, shared)
+            DecisionMode.AUTOMATIC -> buildAutomaticModel(evaluation, assessment, shared)
+        }
+    }
+
+    private data class SharedFields(
+        val fareText: String,
+        val grossPerKmText: String,
+        val grossPerHourText: String,
+        val totalDistanceText: String,
+        val totalDurationText: String,
+        val pickupSummary: String,
+        val tripSummary: String,
+        val formattedReasons: List<String>,
+        val mainReasonText: String?,
+        val offerTypeText: String,
+        val passengerRatingText: String?
+    )
+
+    private fun buildManualModel(evaluation: TripEvaluation, shared: SharedFields): HudUiModel {
+        val trip = evaluation.trip
+        val tier = determineVisualTier(evaluation)
+
+        val goalContext = evaluation.goalContext
+        val goalPaceText = formatGoalPace(goalContext)
+        val goalContributionText = formatGoalContribution(goalContext)
+        val goalStatusText = formatGoalStatus(goalContext)
+
+        return HudUiModel(
+            tier = tier,
+            decision = evaluation.decision,
+            decisionText = tier.label,
+            fareText = shared.fareText,
+            grossPerKmText = shared.grossPerKmText,
+            grossPerHourText = shared.grossPerHourText,
+            totalDistanceText = shared.totalDistanceText,
+            totalDurationText = shared.totalDurationText,
+            pickupSummaryText = shared.pickupSummary,
+            tripSummaryText = shared.tripSummary,
+            mainReasonText = shared.mainReasonText,
+            reasons = shared.formattedReasons,
+            offerType = trip.offerType,
+            offerTypeText = shared.offerTypeText,
+            isCashPayment = trip.isCashPayment,
+            passengerRating = shared.passengerRatingText,
+            goalPaceText = goalPaceText,
+            goalContributionText = goalContributionText,
+            goalStatusText = goalStatusText,
+            decisionMode = DecisionMode.MANUAL
+        )
+    }
+
+    private fun buildAutomaticModel(
+        evaluation: TripEvaluation,
+        assessment: OpportunityAssessment?,
+        shared: SharedFields
+    ): HudUiModel {
+        val trip = evaluation.trip
+        val tier = determineAutomaticTier(evaluation, assessment)
+        val recommendationText = determineRecommendationText(evaluation, assessment)
+        val qualityText = assessment?.quality?.let { formatQuality(it) }
+        val confidenceText = assessment?.confidence?.let { formatConfidence(it) }
+        val isOverride = assessment?.speOverridden ?: false
+        val overrideText = if (isOverride) assessment?.overrideJustification else null
+
+        return HudUiModel(
+            tier = tier,
+            decision = evaluation.decision,
+            decisionText = recommendationText ?: tier.label,
+            fareText = shared.fareText,
+            grossPerKmText = shared.grossPerKmText,
+            grossPerHourText = shared.grossPerHourText,
+            totalDistanceText = shared.totalDistanceText,
+            totalDurationText = shared.totalDurationText,
+            pickupSummaryText = shared.pickupSummary,
+            tripSummaryText = shared.tripSummary,
+            mainReasonText = shared.mainReasonText,
+            reasons = shared.formattedReasons,
+            offerType = trip.offerType,
+            offerTypeText = shared.offerTypeText,
+            isCashPayment = trip.isCashPayment,
+            passengerRating = shared.passengerRatingText,
+            goalPaceText = null,
+            goalContributionText = null,
+            goalStatusText = null,
+            decisionMode = DecisionMode.AUTOMATIC,
+            recommendationText = recommendationText,
+            qualityText = qualityText,
+            confidenceText = confidenceText,
+            isOverride = isOverride,
+            overrideText = overrideText
+        )
+    }
+
+    /**
+     * Texto de accion principal para AUTOMATIC. Fallback conservador cuando assessment == null:
+     * nunca se presenta como TAKE, nunca se inventa Quality/Confidence.
+     */
+    private fun determineRecommendationText(
+        evaluation: TripEvaluation,
+        assessment: OpportunityAssessment?
+    ): String {
+        if (assessment == null) {
+            return when (evaluation.decision) {
+                Decision.ACCEPT -> "OPORTUNIDAD DETECTADA"
+                Decision.REJECT -> "PASAR"
+                Decision.UNKNOWN -> "SIN DATOS SUFICIENTES"
+            }
+        }
+
+        if (assessment.speDecision == Decision.UNKNOWN) {
+            return "SIN DATOS SUFICIENTES"
+        }
+
+        val base = when (assessment.recommendation) {
+            Recommendation.TAKE -> when (assessment.quality) {
+                OpportunityQuality.EXCEPTIONAL -> "OPORTUNIDAD EXCEPCIONAL"
+                else -> "BUENA OPORTUNIDAD"
+            }
+            Recommendation.EVALUATE -> "VALORAR"
+            Recommendation.SKIP -> "PASAR"
+        }
+
+        return if (assessment.confidence == Confidence.LOW) {
+            "$base — datos limitados"
+        } else {
+            base
+        }
+    }
+
+    private fun formatQuality(quality: OpportunityQuality): String = when (quality) {
+        OpportunityQuality.EXCEPTIONAL -> "EXCEPCIONAL"
+        OpportunityQuality.GOOD -> "BUENA"
+        OpportunityQuality.MARGINAL -> "MARGINAL"
+        OpportunityQuality.POOR -> "POBRE"
+    }
+
+    private fun formatConfidence(confidence: Confidence): String? = when (confidence) {
+        Confidence.HIGH -> null
+        Confidence.MEDIUM -> "Confianza media"
+        Confidence.LOW -> "Confianza baja"
+    }
+
+    /**
+     * Tier visual para AUTOMATIC: deriva de OpportunityQuality (nunca de profitabilityLevel).
+     * Fallback conservador cuando assessment == null.
+     */
+    private fun determineAutomaticTier(
+        evaluation: TripEvaluation,
+        assessment: OpportunityAssessment?
+    ): HudVisualTier {
+        if (assessment == null) {
+            return when (evaluation.decision) {
+                Decision.ACCEPT -> HudVisualTier.ACCEPTABLE
+                Decision.REJECT -> HudVisualTier.BAD
+                Decision.UNKNOWN -> HudVisualTier.BAD
+            }
+        }
+        return when (assessment.quality) {
+            OpportunityQuality.EXCEPTIONAL -> HudVisualTier.EXCELLENT
+            OpportunityQuality.GOOD -> HudVisualTier.GOOD
+            OpportunityQuality.MARGINAL -> HudVisualTier.ACCEPTABLE
+            OpportunityQuality.POOR -> HudVisualTier.BAD
+        }
     }
 
     fun determineVisualTier(evaluation: TripEvaluation): HudVisualTier {
@@ -116,6 +287,28 @@ object HudUiModelMapper {
             else -> "€"
         }
         return "$formatted $symbol"
+    }
+
+    private fun formatGoalPace(ctx: GoalContextMetrics?): String? {
+        val ratio = ctx?.targetPaceRatio ?: return null
+        val pct = String.format(SPANISH_LOCALE, "%.0f", ratio * 100)
+        return "$pct% ritmo"
+    }
+
+    private fun formatGoalContribution(ctx: GoalContextMetrics?): String? {
+        val contribution = ctx?.estimatedGoalContribution ?: return null
+        val pct = String.format(SPANISH_LOCALE, "%.1f", contribution * 100)
+        return "$pct% del restante"
+    }
+
+    private fun formatGoalStatus(ctx: GoalContextMetrics?): String? {
+        ctx ?: return null
+        return when (ctx.progressStatus) {
+            ProgressStatus.TARGET_REACHED -> "Objetivo alcanzado"
+            ProgressStatus.AHEAD -> "Adelantado"
+            ProgressStatus.ON_TRACK -> "En ritmo"
+            ProgressStatus.BEHIND -> "Retrasado"
+        }
     }
 
     private fun mapReason(reason: DecisionReason): String {

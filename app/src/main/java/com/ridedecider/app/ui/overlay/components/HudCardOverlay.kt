@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ridedecider.app.domain.model.DecisionMode
 import com.ridedecider.app.domain.model.TripOfferType
 import com.ridedecider.app.ui.overlay.model.HudUiModel
 import com.ridedecider.app.ui.overlay.model.HudVisualTier
@@ -103,7 +104,11 @@ fun HudCardOverlay(
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = tier.label,
+                            text = if (model.decisionMode == DecisionMode.AUTOMATIC && model.recommendationText != null) {
+                                model.recommendationText
+                            } else {
+                                tier.label
+                            },
                             color = tierColor,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Black,
@@ -190,6 +195,47 @@ fun HudCardOverlay(
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold
                 )
+            }
+
+            if (model.decisionMode == DecisionMode.AUTOMATIC) {
+                // 4b. Linea de Confianza / Override (solo AUTOMATIC) — nunca contexto de Goals.
+                if (model.confidenceText != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = model.confidenceText,
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                if (model.isOverride && model.overrideText != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = model.overrideText,
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            } else {
+                // 4. Linea de Contexto de Objetivo (solo si hay datos de objetivo activo) — MANUAL
+                val hasGoalContext = model.goalPaceText != null || model.goalContributionText != null || model.goalStatusText != null
+                if (hasGoalContext) {
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    val goalLine = listOfNotNull(
+                        model.goalPaceText,
+                        model.goalContributionText,
+                        model.goalStatusText
+                    ).joinToString("   ·   ")
+
+                    Text(
+                        text = goalLine,
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
     }

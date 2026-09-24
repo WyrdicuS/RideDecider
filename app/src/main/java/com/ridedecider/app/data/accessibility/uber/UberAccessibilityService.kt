@@ -11,6 +11,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.ridedecider.app.data.accessibility.uber.diagnostic.LogcatAccessibilityDiagnosticLogger
 import com.ridedecider.app.data.di.ServiceLocator
 import com.ridedecider.app.domain.model.TripEvaluation
+import com.ridedecider.app.domain.model.opportunity.OpportunityAssessment
 import com.ridedecider.app.ui.overlay.HudOverlayManager
 import com.ridedecider.app.ui.overlay.state.HudStateHolder
 import kotlinx.coroutines.CoroutineScope
@@ -148,25 +149,51 @@ class UberAccessibilityService : AccessibilityService() {
 
         processor = UberAccessibilityProcessor(
             diagnosticLogger = diagnosticLogger,
-            configProvider = configProvider
+            configProvider = configProvider,
+            economicContextProvider = {
+                val ctx = earningsTracker.cachedContext
+                if (ctx != null) {
+                    val now = System.currentTimeMillis()
+                    val (dayStartNow, _) = earningsTracker.getDayBounds(now)
+                    val (dayStartCtx, _) = earningsTracker.getDayBounds(ctx.timestamp)
+                    if (dayStartNow != dayStartCtx) {
+                        serviceScope.launch { earningsTracker.refreshEconomicContext() }
+                        null
+                    } else {
+                        ctx
+                    }
+                } else {
+                    null
+                }
+            }
         )
         isProcessorInitialized = true
 
         serviceScope.launch {
+            try {
+                earningsTracker.refreshEconomicContext()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error initializing cached economic context: ${e.message}")
+            }
+        }
+
+        serviceScope.launch {
             goalsRepo.goalsFlow.collect { goals ->
-                val hourlyTarget = goals.activeHourlyTarget
-                val newConfig = com.ridedecider.app.domain.model.ProfitabilityConfig(
-                    costPerKm = 0.20,
-                    costPerHour = 4.0,
-                    minGrossHourlyRate = hourlyTarget,
-                    minGrossPerKmRate = 1.10,
-                    minNetTripProfit = 2.0,
-                    minNetHourlyRate = maxOf(10.0, hourlyTarget * 0.75),
-                    maxPickupDistanceKm = 4.5,
-                    maxPickupTimeMinutes = 9.0
-                )
-                configProvider.updateConfig(newConfig)
-                Log.i(TAG, "[GOALS_SYNCED] Objetivo Único Activo [${goals.activePeriod}]: Meta=${goals.activeTargetEur.toInt()}€ en ${goals.activePlannedHours.toInt()}h -> ${hourlyTarget}€/h.")
+                Log.i(TAG, "[GOALS_SYNCED] Objetivo Único Activo [${goals.activePeriod}]: Meta=${goals.activeTargetEur.toInt()}€ en ${goals.activePlannedHours.toInt()}h -> ${goals.activeHourlyTarget}€/h.")
+                try {
+                    earningsTracker.refreshEconomicContext()
+                } catch (e: Exception) {
+                    Log.w(TAG, "[GOALS_SYNCED] Error refreshing economic context: ${e.message}")
+                }
+            }
+        }
+
+        // R5: HudStateHolder mantiene una copia derivada del DecisionMode activo, sincronizada
+        // con la unica fuente de verdad persistida (DecisionModeRepository).
+        val decisionModeRepository = com.ridedecider.app.data.di.ServiceLocator.getDecisionModeRepository(this)
+        serviceScope.launch {
+            decisionModeRepository.modeFlow.collect { mode ->
+                HudStateHolder.setDecisionMode(mode)
             }
         }
 
@@ -183,9 +210,14 @@ class UberAccessibilityService : AccessibilityService() {
         }
 
         val hudEvaluationListener = object : TripEvaluationListener {
+            // Cache sincrono de la ultima TripEvaluation: el processor invoca onTripEvaluation()
+            // e inmediatamente despues onOpportunityAssessment() para el mismo ciclo de evaluacion
+            // (mismo hilo, sin reentrada posible). Se emite al HUD una vez se tienen ambos.
+            private var pendingEvaluation: TripEvaluation? = null
+
             override fun onTripEvaluation(evaluation: TripEvaluation) {
                 globalEvaluationListener?.onTripEvaluation(evaluation)
-                HudStateHolder.emitEvaluation(evaluation)
+                pendingEvaluation = evaluation
                 serviceScope.launch {
                     try {
                         earningsTracker.recordEvaluatedOffer(evaluation.trip, evaluation)
@@ -193,6 +225,12 @@ class UberAccessibilityService : AccessibilityService() {
                         Log.e(TAG, "Error recording trip evaluation in room: ${e.message}")
                     }
                 }
+            }
+
+            override fun onOpportunityAssessment(assessment: OpportunityAssessment) {
+                globalEvaluationListener?.onOpportunityAssessment(assessment)
+                val evaluation = pendingEvaluation ?: return
+                HudStateHolder.emitEvaluation(evaluation, assessment)
             }
 
             override fun onScreenStateChanged(screenType: UberOfferScreenType) {

@@ -1,7 +1,6 @@
 package com.ridedecider.app.domain.engine
 
 import com.ridedecider.app.domain.model.Decision
-import com.ridedecider.app.domain.model.DriverEconomicContext
 import com.ridedecider.app.domain.model.EvaluationMetrics
 import com.ridedecider.app.domain.model.ProfitabilityConfig
 import com.ridedecider.app.domain.model.TripProfitabilityLevel
@@ -9,9 +8,7 @@ import com.ridedecider.app.domain.model.TripProfitabilityLevel
 /**
  * Clasificador cualitativo de rentabilidad económica para ofertas de viaje.
  *
- * Separa de manera limpia y determinista:
- * 1. **Rentabilidad Pura del Viaje**: Ratios de ingresos brutos/netos por km y por hora respecto a los umbrales configurados.
- * 2. **Contexto Económico del Conductor**: Necesidad de ritmo horario para alcanzar los objetivos diarios y horas restantes.
+ * Rentabilidad Pura del Viaje: Ratios de ingresos brutos/netos por km y por hora respecto a los umbrales configurados.
  */
 class TripProfitabilityClassifier {
 
@@ -22,15 +19,13 @@ class TripProfitabilityClassifier {
      * @param config Configuración económica y umbrales del conductor.
      * @param decision Decisión base emitida por el motor ([Decision.ACCEPT], [Decision.REJECT], [Decision.UNKNOWN]).
      * @param pickupDistanceKm Distancia de recogida en kilómetros.
-     * @param economicContext Contexto de objetivos y progreso económico acumulado (opcional).
      * @return [TripProfitabilityLevel] con el nivel asignado (EXCELLENT, GOOD, ACCEPTABLE, BAD).
      */
     fun classify(
         metrics: EvaluationMetrics?,
         config: ProfitabilityConfig,
         decision: Decision,
-        pickupDistanceKm: Double,
-        economicContext: DriverEconomicContext? = null
+        pickupDistanceKm: Double
     ): TripProfitabilityLevel {
         if (metrics == null || decision == Decision.UNKNOWN) {
             return TripProfitabilityLevel.BAD
@@ -61,19 +56,6 @@ class TripProfitabilityClassifier {
         }
 
         // 2. Caso ACCEPT: Evaluar si es EXCELLENT, GOOD o ACCEPTABLE
-        val isTargetReached = economicContext?.dailyProgress?.status == com.ridedecider.app.domain.model.ProgressStatus.TARGET_REACHED
-        val baseGoalHourly = if (economicContext != null && economicContext.dailyProgress.plannedHours > 0.0) {
-            economicContext.dailyProgress.targetEur / economicContext.dailyProgress.plannedHours
-        } else {
-            minGrossH
-        }
-        val effectiveRequiredHourly = if (isTargetReached) baseGoalHourly else (economicContext?.dailyProgress?.requiredHourlyRate ?: 0.0)
-        val targetPaceRatio = if (effectiveRequiredHourly > 0.0) metrics.grossPerHour / effectiveRequiredHourly else null
-
-        // Si ya se alcanzó la meta diaria y el conductor sigue trabajando, exigir viajes de alto rendimiento (>= ritmo objetivo)
-        if (isTargetReached && targetPaceRatio != null && targetPaceRatio < 0.95) {
-            return TripProfitabilityLevel.BAD
-        }
 
         // Criterio 1: EXCELENTE por rentabilidad pura holgada (>= 25% por encima de umbrales con recogida eficiente)
         val isPureExcellent = kmRatio >= 1.25 &&
@@ -82,13 +64,7 @@ class TripProfitabilityClassifier {
                 pickupRatio <= 0.85 &&
                 metrics.netProfit >= config.minNetTripProfit * 1.20
 
-        // Criterio 2: EXCELENTE contextual (impulsa fuertemente el ritmo horario hacia la meta o en horas extra)
-        val isContextualExcellent = targetPaceRatio != null &&
-                targetPaceRatio >= 1.15 &&
-                kmRatio >= 1.10 &&
-                metrics.netProfit >= config.minNetTripProfit
-
-        if (isPureExcellent || isContextualExcellent) {
+        if (isPureExcellent) {
             return TripProfitabilityLevel.EXCELLENT
         }
 

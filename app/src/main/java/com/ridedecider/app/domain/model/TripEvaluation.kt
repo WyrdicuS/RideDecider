@@ -10,5 +10,6 @@ data class TripEvaluation(
     val decision: Decision,
     val reasons: List<DecisionReason>,
     val evaluationTimestamp: Long,
-    val profitabilityLevel: TripProfitabilityLevel = TripProfitabilityLevel.BAD
+    val profitabilityLevel: TripProfitabilityLevel = TripProfitabilityLevel.BAD,
+    val goalContext: GoalContextMetrics? = null
 )

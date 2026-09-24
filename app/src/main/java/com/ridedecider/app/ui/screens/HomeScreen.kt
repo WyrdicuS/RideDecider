@@ -62,6 +62,7 @@ import com.ridedecider.app.ui.theme.RdStatusAhead
 import com.ridedecider.app.ui.theme.RdStatusWarning
 import com.ridedecider.app.ui.theme.RdTextTertiary
 import com.ridedecider.app.ui.theme.RdBrandPrimary
+import com.ridedecider.app.ui.theme.RdBrandPrimaryLight
 import com.ridedecider.app.ui.theme.RdStatusAhead
 import com.ridedecider.app.ui.theme.RdStatusBehind
 import com.ridedecider.app.ui.theme.RdSurface
@@ -96,6 +97,11 @@ fun HomeScreen(
     val context = LocalContext.current
     val earningsRepository = remember { ServiceLocator.getEarningsRepository(context) }
     val hudState by com.ridedecider.app.ui.overlay.state.HudStateHolder.state.collectAsState()
+
+    // R6.2: indicador del modo de decisión (MANUAL/AUTOMATIC). Fuente unica de verdad:
+    // DecisionModeRepository (singleton via ServiceLocator); no se persiste ni deriva aqui.
+    val decisionModeRepo = remember { ServiceLocator.getDecisionModeRepository(context) }
+    val currentDecisionMode by decisionModeRepo.modeFlow.collectAsState()
 
     var selectedPeriod by remember { mutableStateOf(HistoryPeriod.TODAY) }
     var dailyProgress by remember { mutableStateOf<EarningsProgress?>(null) }
@@ -218,11 +224,17 @@ fun HomeScreen(
                 AccessibilityServiceStatus.DISABLED -> Triple(if (isAccessibilityEnabled) "ACTIVO" else "INACTIVO", isAccessibilityEnabled, false)
             }
 
-            StatusIndicator(
-                label = statusLabel,
-                isActive = isStatusActive,
-                isWarning = isStatusWarning
-            )
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                StatusIndicator(
+                    label = statusLabel,
+                    isActive = isStatusActive,
+                    isWarning = isStatusWarning
+                )
+                DecisionModeChip(mode = currentDecisionMode)
+            }
         }
 
         // 2. Tarjeta Principal: Objetivo de Hoy (Métricas Reales)
@@ -487,5 +499,36 @@ fun HomeScreen(
 
         // Espacio para evitar superposición con la barra de navegación inferior
         Spacer(modifier = Modifier.height(20.dp))
+    }
+}
+
+/**
+ * R6.2: chip compacto que refleja el [com.ridedecider.app.domain.model.DecisionMode] activo.
+ * Solo presentacion: no realiza persistencia, no genera evaluaciones, no consulta Goals.
+ * Diferenciacion visual con tokens existentes de la paleta:
+ *   AUTOMATIC → fondo/borde de marca (RdBrandPrimary) + texto RdBrandPrimaryLight
+ *   MANUAL    → fondo/borde neutros (RdSurfaceInteractive/RdBorderSubtle) + texto RdTextSecondary
+ */
+@Composable
+private fun DecisionModeChip(mode: com.ridedecider.app.domain.model.DecisionMode) {
+    val isAutomatic = mode == com.ridedecider.app.domain.model.DecisionMode.AUTOMATIC
+    val label = if (isAutomatic) "MODO AUTOMÁTICO" else "MODO MANUAL"
+    val background = if (isAutomatic) RdBrandPrimary.copy(alpha = 0.16f) else RdSurfaceInteractive
+    val borderColor = if (isAutomatic) RdBrandPrimary.copy(alpha = 0.5f) else RdBorderSubtle
+    val textColor = if (isAutomatic) RdBrandPrimaryLight else RdTextSecondary
+
+    Box(
+        modifier = Modifier
+            .background(background, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+            .border(1.dp, borderColor, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+            .padding(horizontal = 7.dp, vertical = 2.5.dp)
+    ) {
+        Text(
+            text = label,
+            color = textColor,
+            fontSize = 9.5.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.5.sp
+        )
     }
 }

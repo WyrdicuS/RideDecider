@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -200,10 +201,72 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Sección: Motor de Rentabilidad Inteligente (Sincronizado con Objetivos)
-        val goalsRepo = remember { ServiceLocator.getDriverGoalsRepository(context) }
-        val activeGoals by goalsRepo.goalsFlow.collectAsState(initial = com.ridedecider.app.domain.model.DriverGoals())
+        // 2b. Sección: Modo de Decisión (Manual / Automático) — R5
+        val decisionModeRepo = remember { ServiceLocator.getDecisionModeRepository(context) }
+        val currentDecisionMode by decisionModeRepo.modeFlow.collectAsState()
 
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, RdBorderSubtle, RoundedCornerShape(16.dp)),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = RdSurface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "MODO DE DECISIÓN",
+                    color = RdTextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp
+                )
+
+                Text(
+                    text = "Manual: analiza cada oferta respecto a tu objetivo personal. Automático: evalúa la oportunidad económica de la oferta en sí, sin usar tus objetivos.",
+                    color = RdTextTertiary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    listOf(
+                        com.ridedecider.app.domain.model.DecisionMode.MANUAL to "MANUAL",
+                        com.ridedecider.app.domain.model.DecisionMode.AUTOMATIC to "AUTOMÁTICO"
+                    ).forEach { (mode, label) ->
+                        val isSelected = currentDecisionMode == mode
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(
+                                    if (isSelected) RdBrandPrimary.copy(alpha = 0.18f) else RdSurfaceElevated,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) RdBrandPrimary else RdBorderSubtle,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { decisionModeRepo.setMode(mode) }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) RdBrandPrimaryLight else RdTextTertiary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Sección: Motor de Rentabilidad Inteligente (evaluación económica intrínseca)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -232,7 +295,7 @@ fun SettingsScreen(
                             .padding(horizontal = 7.dp, vertical = 2.5.dp)
                     ) {
                         Text(
-                            text = "CALIBRADO POR OBJETIVOS",
+                            text = "EVALUACIÓN ECONÓMICA",
                             color = RdBrandPrimaryLight,
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.Black
@@ -241,75 +304,11 @@ fun SettingsScreen(
                 }
 
                 Text(
-                    text = "RideDecider calcula en tiempo real el ritmo necesario (€/h) a partir de tus metas de ingresos y horas. Cada viaje se evalúa para maximizar tus ganancias en el menor tiempo.",
+                    text = "El motor evalúa cada oferta según sus características económicas y los criterios configurados del motor. Esta evaluación es independiente de tus objetivos personales.",
                     color = RdTextTertiary,
                     fontSize = 12.sp,
                     lineHeight = 16.sp
                 )
-
-                // Indicadores de Calibración Activa
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(RdSurfaceElevated, RoundedCornerShape(12.dp))
-                            .border(1.dp, RdBorderSubtle, RoundedCornerShape(12.dp))
-                            .padding(12.dp)
-                    ) {
-                        Column {
-                            Text(
-                                text = "RITMO OBJETIVO BASE",
-                                color = RdTextSecondary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(3.dp))
-                            Text(
-                                text = String.format(java.util.Locale.US, "%.2f €/h", activeGoals.activeHourlyTarget),
-                                color = RdBrandPrimaryLight,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                            Text(
-                                text = "Meta: ${activeGoals.activeTargetEur.toInt()} € en ${activeGoals.activePlannedHours.toInt()} h",
-                                color = RdTextTertiary,
-                                fontSize = 10.sp
-                            )
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(RdSurfaceElevated, RoundedCornerShape(12.dp))
-                            .border(1.dp, RdBorderSubtle, RoundedCornerShape(12.dp))
-                            .padding(12.dp)
-                    ) {
-                        Column {
-                            Text(
-                                text = "PROTECCIÓN DE TIEMPO",
-                                color = RdTextSecondary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(3.dp))
-                            Text(
-                                text = "Alta Exigencia",
-                                color = RdStatusAhead,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                            Text(
-                                text = "Filtro activo incluso tras meta",
-                                color = RdTextTertiary,
-                                fontSize = 10.sp
-                            )
-                        }
-                    }
-                }
             }
         }
 

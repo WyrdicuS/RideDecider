@@ -1,10 +1,8 @@
 package com.ridedecider.app.domain.engine
 
 import com.ridedecider.app.domain.model.Decision
-import com.ridedecider.app.domain.model.DriverEconomicContext
 import com.ridedecider.app.domain.model.EvaluationMetrics
 import com.ridedecider.app.domain.model.ProfitabilityConfig
-import com.ridedecider.app.domain.model.ProgressStatus
 import com.ridedecider.app.domain.model.TripProfitabilityLevel
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -131,7 +129,10 @@ class TripProfitabilityClassifierTest {
     }
 
     @Test
-    fun classify_contextualBoosting_whenDrivingTowardDailyTarget_shouldReturnExcellent() {
+    fun classify_sameOffer_isIndependentOfEconomicContext_shouldReturnGood() {
+        // R4.10: misma oferta del antiguo caso de contextual boosting. Sin economicContext,
+        // classify() ya no acepta ese parámetro: el resultado debe ser el nivel intrínseco (GOOD),
+        // no EXCELLENT, sin importar los objetivos o el progreso del conductor.
         val metrics = EvaluationMetrics(
             totalDistanceKm = 10.0,
             totalDurationMinutes = 20.0,
@@ -143,49 +144,13 @@ class TripProfitabilityClassifierTest {
             netPerHour = 26.50
         )
 
-        // Conductor necesita 25.0 €/h para llegar a su objetivo diario
-        val daily = com.ridedecider.app.domain.model.EarningsProgress(
-            period = com.ridedecider.app.domain.model.GoalPeriod.DAILY,
-            targetEur = 160.0,
-            earnedEur = 60.0,
-            remainingEur = 100.0,
-            completionPercentage = 37.5,
-            plannedHours = 8.0,
-            workedHours = 4.0,
-            remainingHours = 4.0,
-            currentHourlyRate = 15.0,
-            requiredHourlyRate = 25.0,
-            status = ProgressStatus.BEHIND
-        )
-        val emptyProgress = com.ridedecider.app.domain.model.EarningsProgress(
-            period = com.ridedecider.app.domain.model.GoalPeriod.WEEKLY,
-            targetEur = 0.0,
-            earnedEur = 0.0,
-            remainingEur = 0.0,
-            completionPercentage = 0.0,
-            plannedHours = 0.0,
-            workedHours = 0.0,
-            remainingHours = 0.0,
-            currentHourlyRate = 0.0,
-            requiredHourlyRate = 0.0,
-            status = ProgressStatus.ON_TRACK
-        )
-
-        val context = DriverEconomicContext(
-            dailyProgress = daily,
-            weeklyProgress = emptyProgress,
-            monthlyProgress = emptyProgress
-        )
-
-        // 34.50 €/h >= 25.0 * 1.2 (30.0 €/h) => Impulsa fuertemente el objetivo del conductor
         val result = classifier.classify(
             metrics = metrics,
             config = config,
             decision = Decision.ACCEPT,
-            pickupDistanceKm = 2.0,
-            economicContext = context
+            pickupDistanceKm = 2.0
         )
-        assertEquals(TripProfitabilityLevel.EXCELLENT, result)
+        assertEquals(TripProfitabilityLevel.GOOD, result)
     }
 
     @Test

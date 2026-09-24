@@ -113,4 +113,15 @@ object ServiceLocator {
             }
         }
     }
+
+    @Volatile
+    private var decisionModeRepository: com.ridedecider.app.data.preferences.DecisionModeRepository? = null
+
+    fun getDecisionModeRepository(context: Context): com.ridedecider.app.data.preferences.DecisionModeRepository {
+        return decisionModeRepository ?: synchronized(this) {
+            decisionModeRepository ?: com.ridedecider.app.data.preferences.DecisionModeRepository(
+                context.applicationContext
+            ).also { decisionModeRepository = it }
+        }
+    }
 }
