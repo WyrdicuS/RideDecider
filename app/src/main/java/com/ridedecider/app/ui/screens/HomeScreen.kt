@@ -20,10 +20,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -325,22 +329,25 @@ fun HomeScreen(
                     workedHours > 0.05 &&
                     currentRate >= goalHourlyTarget
                 MetricCard(
-                    label = "Ritmo Económico",
+                    label = "RITMO ECO.",
                     value = hourlyRateFormatted,
                     unit = "€/h",
                     modifier = Modifier.weight(1f),
                     valueColor = if (meetsGoalPace) RdBrandPrimary else RdTextPrimary,
-                    subValue = if (workedHours > 0.05) "En tiempo activo" else "Sin actividad"
+                    subValue = if (workedHours > 0.05) "En tiempo activo" else "Sin actividad",
+                    icon = Icons.Rounded.Speed
                 )
 
                 val earnedFormatted = String.format(Locale.US, "%.2f", completedEarnings)
                 MetricCard(
-                    label = "Ganado (${selectedPeriod.label})",
+                    label = "GANADO",
                     value = earnedFormatted,
                     unit = "€",
                     modifier = Modifier.weight(1f),
                     valueColor = RdStatusAhead,
-                    subValue = "$completedTripsCount completados"
+                    subValue = "$completedTripsCount completados",
+                    icon = Icons.Rounded.AccountBalanceWallet,
+                    iconTint = RdStatusAhead
                 )
             }
 
@@ -355,18 +362,21 @@ fun HomeScreen(
                 val kmFormatted = String.format(Locale.US, "%.1f", totalKm)
 
                 MetricCard(
-                    label = "Kilómetros en Ruta",
+                    label = "KM EN RUTA",
                     value = kmFormatted,
                     unit = "km",
                     modifier = Modifier.weight(1f),
-                    subValue = "Distancia efectiva"
+                    subValue = "Distancia efectiva",
+                    icon = Icons.AutoMirrored.Rounded.TrendingUp
                 )
 
                 MetricCard(
-                    label = "Cancelaciones",
+                    label = "CANCELACIONES",
                     value = "${cancelledTrips.size}",
                     unit = "viajes",
                     modifier = Modifier.weight(1f),
+                    icon = Icons.Rounded.Block,
+                    iconTint = if (cancelledTrips.isNotEmpty()) RdStatusBehind else RdTextTertiary,
                     valueColor = if (cancelledTrips.isNotEmpty()) RdStatusBehind else RdTextPrimary,
                     subValue = if (cancellationFeesTotal > 0.0) "+${String.format(Locale.US, "%.2f €", cancellationFeesTotal)} comp." else "0.00 € comp."
                 )

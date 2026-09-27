@@ -141,56 +141,19 @@ fun LiveScreen(
             }
         }
 
-        // 2. Estado Actual de la Máquina de Estados
-        val (stateLabel, stateColor) = when (currentLifecycleState) {
-            is TripLifecycleState.Idle -> "IDLE (En Espera)" to RdTripStateIdle
-            is TripLifecycleState.OfferDetected, is TripLifecycleState.PendingAcceptance -> "OFERTA DETECTADA" to RdTripStateOffer
-            is TripLifecycleState.Assigned -> "VIAJE ASIGNADO" to RdTripStateAssigned
-            is TripLifecycleState.ActiveTrip -> "EN RUTA" to RdTripStateActive
-            is TripLifecycleState.Completed -> "VIAJE COMPLETADO" to RdTripStateCompleted
-            is TripLifecycleState.Cancelled -> "VIAJE CANCELADO" to RdTripStateCancelled
-            is TripLifecycleState.IgnoredOrExpired -> "OFERTA EXPIRADA" to RdTripStateExpired
+        // 2. R7.5: Card con estado actual + stepper horizontal del ciclo de vida.
+        LifecycleStepperCard(state = currentLifecycleState)
+
+        // 3. Tarjeta Hero de la Oferta Activa / En Vivo. R7.2: pasar direcciones reales
+        //    (pickup / dropoff) desde el TripLifecycleState activo para pintar el bloque
+        //    "Recogida / Destino" bajo los ratios cuando existan.
+        val currentTrip = when (val s = currentLifecycleState) {
+            is TripLifecycleState.OfferDetected -> s.trip
+            is TripLifecycleState.PendingAcceptance -> s.trip
+            is TripLifecycleState.Assigned -> s.trip
+            is TripLifecycleState.ActiveTrip -> s.trip
+            else -> null
         }
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, RdBorderSubtle, RoundedCornerShape(14.dp)),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = RdSurface)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "ESTADO DEL VIAJE",
-                    color = RdTextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.8.sp
-                )
-
-                Box(
-                    modifier = Modifier
-                        .background(stateColor.copy(alpha = 0.16f), RoundedCornerShape(6.dp))
-                        .border(1.dp, stateColor.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = stateLabel,
-                        color = stateColor,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
-            }
-        }
-
-        // 3. Tarjeta Hero de la Oferta Activa / En Vivo
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = "OFERTA EN CURSO",
@@ -202,11 +165,119 @@ fun LiveScreen(
 
             RecommendationHeroCard(
                 evaluation = activeEvaluationModel,
-                isLiveMode = true
+                isLiveMode = true,
+                pickupAddress = currentTrip?.pickupAddress,
+                dropoffAddress = currentTrip?.dropoffAddress
             )
         }
 
         // Espacio de seguridad inferior para asegurar scroll fluido y visibilidad completa sobre la barra de navegación
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+/**
+ * R7.5: card superior de En Vivo. Muestra el estado actual del viaje en pill destacado
+ * arriba a la izquierda + stepper horizontal IDLE → DETECTADA → ASIGNADA → EN RUTA → FIN
+ * con la etapa activa iluminada en el color del estado.
+ */
+@Composable
+private fun LifecycleStepperCard(state: TripLifecycleState) {
+    val (stateLabel, stateColor) = when (state) {
+        is TripLifecycleState.Idle -> "IDLE" to RdTripStateIdle
+        is TripLifecycleState.OfferDetected, is TripLifecycleState.PendingAcceptance ->
+            "OFERTA DETECTADA" to RdTripStateOffer
+        is TripLifecycleState.Assigned -> "VIAJE ASIGNADO" to RdTripStateAssigned
+        is TripLifecycleState.ActiveTrip -> "EN RUTA" to RdTripStateActive
+        is TripLifecycleState.Completed -> "COMPLETADO" to RdTripStateCompleted
+        is TripLifecycleState.Cancelled -> "CANCELADO" to RdTripStateCancelled
+        is TripLifecycleState.IgnoredOrExpired -> "EXPIRADA" to RdTripStateExpired
+    }
+
+    val activeIndex = when (state) {
+        is TripLifecycleState.Idle -> 0
+        is TripLifecycleState.OfferDetected, is TripLifecycleState.PendingAcceptance -> 1
+        is TripLifecycleState.Assigned -> 2
+        is TripLifecycleState.ActiveTrip -> 3
+        is TripLifecycleState.Completed,
+        is TripLifecycleState.Cancelled,
+        is TripLifecycleState.IgnoredOrExpired -> 4
+    }
+
+    val steps = listOf("IDLE", "DETECTADA", "ASIGNADA", "EN RUTA", "FIN")
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, RdBorderSubtle, RoundedCornerShape(14.dp)),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = RdSurface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Pill grande con el estado actual en la esquina superior izquierda.
+            Box(
+                modifier = Modifier
+                    .background(stateColor.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
+                    .border(1.dp, stateColor.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = stateLabel,
+                    color = stateColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.8.sp
+                )
+            }
+
+            // Stepper horizontal: 5 pasos con conector delgado entre ellos.
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Conectores como barra continua discretizada por pasos.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    steps.forEachIndexed { i, _ ->
+                        val reached = i <= activeIndex
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(3.dp)
+                                .background(
+                                    if (reached) stateColor else RdBorderSubtle,
+                                    RoundedCornerShape(2.dp)
+                                )
+                        )
+                    }
+                }
+                // Labels bajo los conectores, alineados por columna.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    steps.forEachIndexed { i, label ->
+                        val isActive = i == activeIndex
+                        Text(
+                            text = label,
+                            modifier = Modifier.weight(1f),
+                            color = when {
+                                isActive -> stateColor
+                                i < activeIndex -> RdTextSecondary
+                                else -> RdTextTertiary
+                            },
+                            fontSize = 10.sp,
+                            fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.SemiBold,
+                            letterSpacing = 0.4.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
     }
 }
