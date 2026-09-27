@@ -150,8 +150,24 @@ done
 c_gray "Signing credentials: found"
 
 # apksigner
-SDK_DIR="$(grep '^sdk.dir=' local.properties 2>/dev/null | sed 's/^sdk.dir=//' | tr -d '\r' | sed 's|\\\\|/|g' | sed 's|\\|/|g' | sed 's|C\:|C:|')"
-[ -n "$SDK_DIR" ] || SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+SDK_DIR_RAW="$(grep '^sdk.dir=' local.properties 2>/dev/null | sed 's/^sdk.dir=//' | tr -d '\r')"
+if [ -n "$SDK_DIR_RAW" ]; then
+  # Java properties escape ":" as "\:" and "\" as "\\". Use Python for a
+  # reliable unescape (bash parameter expansion breaks on the \\ pattern
+  # in some Git Bash versions), then convert to POSIX with cygpath.
+  if command -v python >/dev/null 2>&1; then
+    SDK_DIR="$(python -c "import sys; s=sys.argv[1]; print(s.replace(chr(92)+':',':').replace(chr(92)*2, chr(92)))" "$SDK_DIR_RAW")"
+  elif command -v python3 >/dev/null 2>&1; then
+    SDK_DIR="$(python3 -c "import sys; s=sys.argv[1]; print(s.replace(chr(92)+':',':').replace(chr(92)*2, chr(92)))" "$SDK_DIR_RAW")"
+  else
+    SDK_DIR="$SDK_DIR_RAW"
+  fi
+  if command -v cygpath >/dev/null 2>&1; then
+    SDK_DIR="$(cygpath -u "$SDK_DIR" 2>/dev/null || echo "$SDK_DIR")"
+  fi
+else
+  SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+fi
 [ -n "$SDK_DIR" ] || die "Could not locate Android SDK (sdk.dir in local.properties or ANDROID_HOME)."
 
 # On Windows use apksigner.bat, elsewhere apksigner
